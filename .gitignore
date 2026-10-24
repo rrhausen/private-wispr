@@ -18,6 +18,9 @@ eval/audio/*
 *.m4a
 *.opus
 
+# Hand-off-Diktate: persönliche Arbeitsnotizen, bleiben lokal
+hand-off/
+
 # Secrets & lokal
 .env
 .env.*

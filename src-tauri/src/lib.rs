@@ -8,12 +8,15 @@
 //! in-process (Worker-Prozess-Isolation kommt in M1), Paste noch ohne
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
+mod handoff;
 mod hotkey;
 mod paste;
 mod recording;
 pub mod selftest;
 mod settings;
 mod stt;
+
+pub use recording::OutputMode;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -22,8 +25,6 @@ use log::{error, info, warn};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// M0-Default-Hotkey (frei konfigurierbar folgt in M1, Whispering-Stil).
-const DEFAULT_PTT_HOTKEY: &str = "ctrl+alt+space";
 /// Aufnahmen unter dieser Schwelle gelten als versehentlich (Blitztext-Gate).
 const MIN_RECORDING_SECS: f64 = 0.3;
 
@@ -46,17 +47,22 @@ struct OverlayPayload {
 }
 
 #[derive(Clone, Serialize)]
-struct LastPayload<'a> {
-    text: &'a str,
+struct LastPayload {
+    text: String,
     audio_secs: f64,
     transcription_ms: u128,
+    /// Wohin der Text ging: "Cursor" oder der hand-off-Dateipfad.
+    target: String,
 }
 
 #[tauri::command]
 fn status(state: tauri::State<AppState>) -> serde_json::Value {
     let info = state.engine_info.lock().unwrap();
     serde_json::json!({
-        "hotkey": DEFAULT_PTT_HOTKEY,
+        "hotkeys": {
+            "cursor": hotkey::CURSOR_HOTKEY,
+            "handoff": hotkey::HANDOFF_HOTKEY,
+        },
         "mic": state.mic.lock().unwrap().clone(),
         "engine": {
             "ready": info.loaded,
@@ -121,9 +127,13 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || load_engine(&handle));
 
-            hotkey::start(app.handle().clone(), DEFAULT_PTT_HOTKEY)?;
+            hotkey::start(app.handle().clone())?;
             setup_tray(app)?;
-            info!("Private Wispr M0 gestartet (PTT: {DEFAULT_PTT_HOTKEY} halten)");
+            info!(
+                "Private Wispr M0 gestartet (Cursor: {} halten · Hand-off: {} halten)",
+                hotkey::CURSOR_HOTKEY,
+                hotkey::HANDOFF_HOTKEY
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -198,8 +208,8 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 /// Hotkey-Taste gedrückt: Aufnahme starten (wenn Engine bereit und nicht
-/// bereits aufgenommen wird).
-pub(crate) fn on_ptt_down(app: &AppHandle) {
+/// bereits aufgenommen wird). Der Modus kommt vom auslösenden Hotkey.
+pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
     let state = app.state::<AppState>();
     if !state.engine_info.lock().unwrap().loaded {
         info!("PTT down ignoriert: Engine noch nicht bereit");
@@ -210,8 +220,8 @@ pub(crate) fn on_ptt_down(app: &AppHandle) {
     if slot.is_some() {
         return;
     }
-    info!("PTT down: starte Aufnahme über {:?}", mic);
-    match recording::start(app, mic) {
+    info!("PTT down ({mode:?}): starte Aufnahme über {:?}", mic);
+    match recording::start(app, mic, mode) {
         Ok(active) => {
             *slot = Some(active);
             drop(slot);
@@ -229,12 +239,14 @@ pub(crate) fn on_ptt_down(app: &AppHandle) {
     }
 }
 
-/// Hotkey-Taste losgelassen: Aufnahme beenden, transkribieren, einfügen.
+/// Hotkey-Taste losgelassen: Aufnahme beenden, transkribieren, im Modus der
+/// Aufnahme ausgeben (Cursor-Paste oder Hand-off-Datei).
 pub(crate) fn on_ptt_up(app: &AppHandle) {
     info!("PTT up");
     let state = app.state::<AppState>();
     let active = state.recording.lock().unwrap().take();
     let Some(active) = active else { return };
+    let mode = active.mode;
 
     let spooled = match recording::stop(active) {
         Ok(spooled) => spooled,
@@ -269,18 +281,42 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     spooled.duration_secs, result.transcription_ms, result.text
                 );
                 *last.lock().unwrap() = Some(result.clone());
+                // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
+                let (target, done_msg) = match mode {
+                    OutputMode::Cursor => {
+                        if let Err(e) = paste::paste_text(&result.text) {
+                            warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
+                        }
+                        ("Cursor".to_string(), None)
+                    }
+                    OutputMode::Handoff => {
+                        let (target, ok) = match handoff::append(&result.text) {
+                            Ok(path) => {
+                                info!("Hand-off geschrieben: {}", path.display());
+                                (path.display().to_string(), true)
+                            }
+                            Err(e) => {
+                                error!("Hand-off fehlgeschlagen ({e:#}) — Fallback: Cursor-Paste");
+                                if let Err(e) = paste::paste_text(&result.text) {
+                                    warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
+                                }
+                                ("Cursor (Hand-off fehlgeschlagen)".to_string(), false)
+                            }
+                        };
+                        let done_msg = if ok { Some("→ hand-off ✓".to_string()) } else { None };
+                        (target, done_msg)
+                    }
+                };
                 let _ = handle.emit(
                     "pw://last",
                     LastPayload {
-                        text: &result.text,
+                        text: result.text.clone(),
                         audio_secs: spooled.duration_secs,
                         transcription_ms: result.transcription_ms,
+                        target,
                     },
                 );
-                if let Err(e) = paste::paste_text(&result.text) {
-                    warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
-                }
-                overlay_emit(&handle, OverlayPayload { phase: "done", message: None, level: None });
+                overlay_emit(&handle, OverlayPayload { phase: "done", message: done_msg, level: None });
                 overlay_hide_later(&handle, Duration::from_millis(900));
             }
             Err(e) => {

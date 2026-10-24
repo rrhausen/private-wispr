@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 interface StatusInfo {
-  hotkey: string;
+  hotkeys: { cursor: string; handoff: string };
   mic: string | null;
   engine: {
     ready: boolean;
@@ -21,6 +21,7 @@ interface LastEvent {
   text: string;
   audio_secs: number;
   transcription_ms: number;
+  target: string;
 }
 
 export default function App() {
@@ -97,9 +98,13 @@ export default function App() {
       </section>
 
       <section className="card hint">
-        <strong>{status?.hotkey ?? "ctrl+space"}</strong> halten, sprechen, loslassen —
-        der Text erscheint am Cursor. Brain-Dumps beliebiger Länge sind
-        ausdrücklich vorgesehen (Disk-Spooling, kein Timeout).
+        <div><strong>{status?.hotkeys.cursor ?? "ctrl+alt+space"}</strong> halten, sprechen, loslassen —
+        der Text erscheint am Cursor.</div>
+        <div style={{ marginTop: 8 }}>
+          <strong>{status?.hotkeys.handoff ?? "ctrl+alt+h"}</strong> halten — das Diktat geht als
+          Eintrag in die Hand-off-Tagesdatei <code>hand-off\JJJJ-MM-TT.md</code> (der Weg zu
+          elevated Apps wie Agenten-IDEs, die Strg+V nicht annehmen).
+        </div>
       </section>
 
       <section className="card">
@@ -108,10 +113,7 @@ export default function App() {
           <>
             <blockquote>{last.text}</blockquote>
             <p className="meta">
-              {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms Transkription
-              {last.transcription_ms > 0 && last.audio_secs > 0
-                ? ` · ${(last.transcription_ms / 1000 / last.audio_secs).toFixed(2)}× Echtzeit`
-                : ""}
+              {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms Transkription · Ziel: {last.target}
             </p>
           </>
         ) : (

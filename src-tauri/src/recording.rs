@@ -14,12 +14,20 @@ use hound::{SampleFormat, WavSpec, WavWriter};
 use log::warn;
 use tauri::{AppHandle, Emitter};
 
+/// Wohin ein Diktat geht: Cursor-Ziel (Paste) oder Hand-off-Datei.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputMode {
+    Cursor,
+    Handoff,
+}
+
 /// Eine laufende Aufnahme. `recorder.stop()` liefert das Sink mit den Samples
 /// zurück (Muster aus Handys managers/audio.rs).
 pub struct ActiveRecording {
     recorder: Recorder<SpoolSink>,
     #[allow(dead_code)]
     pub started: Instant,
+    pub mode: OutputMode,
 }
 
 /// Ergebnis einer beendeten Aufnahme. `wav_path` wird ab M1 in die Historie
@@ -128,7 +136,7 @@ fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
 /// implementiert): gewähltes Gerät → einmaliger Retry nach kurzer Pause
 /// (Bluetooth-HFP/SCO-Aufbau braucht Sekunden) → System-Standard → erstes
 /// aktives Eingabegerät. Jeder Fallback wird sichtbar geloggt.
-pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording> {
+pub fn start(app: &AppHandle, device: Option<String>, mode: OutputMode) -> Result<ActiveRecording> {
     let device_id = resolve_device_id(device.as_deref());
     if device.is_some() && device_id.is_none() {
         warn!(
@@ -140,7 +148,7 @@ pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording>
     // Versuch 1: gewähltes (oder aufgelöstes) Gerät.
     if let Some(id) = device_id.clone() {
         match open_recorder(Some(id)) {
-            Ok(recorder) => return finish_start(app, recorder, false),
+            Ok(recorder) => return finish_start(app, recorder, false, mode),
             Err(e) => {
                 warn!("Gerät '{:?}' schlug fehl ({e:#}); Retry in 600 ms (Bluetooth-Aufbauzeit)", device);
             }
@@ -148,7 +156,7 @@ pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording>
         // Versuch 2: kurze Pause, dann nochmals (HFP/SCO-Link-Aufbau).
         std::thread::sleep(std::time::Duration::from_millis(600));
         match open_recorder(device_id) {
-            Ok(recorder) => return finish_start(app, recorder, false),
+            Ok(recorder) => return finish_start(app, recorder, false, mode),
             Err(e) => warn!("Retry für '{:?}' schlug fehl ({e:#}); Fallback auf System-Standard", device),
         }
     }
@@ -157,7 +165,7 @@ pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording>
     match open_recorder(None) {
         Ok(recorder) => {
             warn!("Aufnahme über System-Standard (gewähltes Gerät nicht verfügbar)");
-            return finish_start(app, recorder, true);
+            return finish_start(app, recorder, true, mode);
         }
         Err(e) => warn!("System-Standard schlug fehl ({e:#}); letzter Fallback: erstes aktives Gerät"),
     }
@@ -166,12 +174,17 @@ pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording>
     if let Some(first) = first_active_device_id() {
         let recorder = open_recorder(Some(first))
             .context("Auch das erste aktive Eingabegerät konnte nicht geöffnet werden")?;
-        return finish_start(app, recorder, true);
+        return finish_start(app, recorder, true, mode);
     }
     Err(anyhow::anyhow!("Kein Eingabegerät verfügbar"))
 }
 
-fn finish_start(app: &AppHandle, recorder: Recorder<SpoolSink>, used_fallback: bool) -> Result<ActiveRecording> {
+fn finish_start(
+    app: &AppHandle,
+    recorder: Recorder<SpoolSink>,
+    used_fallback: bool,
+    mode: OutputMode,
+) -> Result<ActiveRecording> {
     if used_fallback {
         let _ = app.emit("pw://mic-fallback", ());
     }
@@ -180,7 +193,7 @@ fn finish_start(app: &AppHandle, recorder: Recorder<SpoolSink>, used_fallback: b
     recorder
         .start(sink)
         .map_err(|e| anyhow::anyhow!("Aufnahme-Start fehlgeschlagen: {}", e.error))?;
-    Ok(ActiveRecording { recorder, started })
+    Ok(ActiveRecording { recorder, started, mode })
 }
 
 /// Namen aus der UI auf die interne Geräte-ID mappen.

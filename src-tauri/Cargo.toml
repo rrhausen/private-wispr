@@ -30,6 +30,7 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
 ] }
 dirs = "5"
+chrono = "0.4"
 sha2 = "0.10"
 handy-keys = "0.3.4"
 handy-recorder = "0.1"
