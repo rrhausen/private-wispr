@@ -23,7 +23,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// M0-Default-Hotkey (frei konfigurierbar folgt in M1, Whispering-Stil).
-const DEFAULT_PTT_HOTKEY: &str = "ctrl+space";
+const DEFAULT_PTT_HOTKEY: &str = "ctrl+alt+space";
 /// Aufnahmen unter dieser Schwelle gelten als versehentlich (Blitztext-Gate).
 const MIN_RECORDING_SECS: f64 = 0.3;
 
@@ -98,6 +98,13 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("private-wispr".to_string()),
+                    }),
+                ])
                 .build(),
         )
         .setup(|app| {
@@ -195,6 +202,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 pub(crate) fn on_ptt_down(app: &AppHandle) {
     let state = app.state::<AppState>();
     if !state.engine_info.lock().unwrap().loaded {
+        info!("PTT down ignoriert: Engine noch nicht bereit");
         return;
     }
     let mic = state.mic.lock().unwrap().clone();
@@ -202,6 +210,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle) {
     if slot.is_some() {
         return;
     }
+    info!("PTT down: starte Aufnahme über {:?}", mic);
     match recording::start(app, mic) {
         Ok(active) => {
             *slot = Some(active);
@@ -222,6 +231,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle) {
 
 /// Hotkey-Taste losgelassen: Aufnahme beenden, transkribieren, einfügen.
 pub(crate) fn on_ptt_up(app: &AppHandle) {
+    info!("PTT up");
     let state = app.state::<AppState>();
     let active = state.recording.lock().unwrap().take();
     let Some(active) = active else { return };
