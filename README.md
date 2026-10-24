@@ -21,10 +21,10 @@ diesen Rechner nie. Kein Account, keine Cloud, keine Telemetrie.
 
 ### Variante B — nur die exe (portabel)
 
-Den Ordner aus `src-tauri\target\release\bundle\zip\` (entpacktes ZIP) oder
-minimal die einzelne `private-wispr.exe` aus `src-tauri\target\release\`
-kopieren und direkt ausführen — keine Installation nötig. Einstellungen und
-Modell liegen unabhängig davon unter `%LOCALAPPDATA%\PrivateWispr\`.
+Die einzelne `private-wispr.exe` aus `src-tauri\target\release\` auf den
+Ziel-Laptop kopieren und direkt ausführen — keine Installation nötig (alle
+UI-Assets sind in die exe eingebettet). Einstellungen und Modell liegen
+unabhängig davon unter `%LOCALAPPDATA%\PrivateWispr\`.
 
 Hinweise für beide Varianten:
 
