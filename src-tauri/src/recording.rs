@@ -121,11 +121,29 @@ fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
 }
 
 /// Mikrofon öffnen und Aufnahme starten (on-demand wie Handy; Warm-State M1).
-/// `device`: gewählter Geräte-Name oder `None` für den System-Standard. Ist das
-/// gewählte Gerät nicht (mehr) vorhanden, fällt die Aufnahme auf den
-/// System-Standard zurück statt still zu scheitern (Meldung im Log).
+/// `device`: gewählter Geräte-NAME (aus der UI); hier wird er auf die interne
+/// Geräte-ID aufgelöst, weil `RecorderConfig.device` die ID will (Handy-
+/// Verhalten: UI zeigt Namen, Recorder bekommt die ID). Ist das gewählte
+/// Gerät nicht (mehr) vorhanden, fällt die Aufnahme auf den System-Standard
+/// zurück statt still zu scheitern (Meldung im Log).
 pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording> {
-    let (recorder, used_fallback) = match open_recorder(device.clone()) {
+    let device_id = device.as_deref().and_then(|name| {
+        handy_recorder::list_input_devices()
+            .ok()
+            .and_then(|devices| {
+                devices
+                    .into_iter()
+                    .find(|d| !d.is_monitor && d.name == name)
+                    .map(|d| d.id)
+            })
+    });
+    if device.is_some() && device_id.is_none() {
+        warn!(
+            "Gerät {:?} nicht in der Geräteliste gefunden; nutze System-Standard",
+            device
+        );
+    }
+    let (recorder, used_fallback) = match open_recorder(device_id) {
         Ok(recorder) => (recorder, false),
         Err(e) if device.is_some() => {
             warn!(
