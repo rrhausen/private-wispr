@@ -19,12 +19,14 @@ diesen Rechner nie. Kein Account, keine Cloud, keine Telemetrie.
    klicken (705 MB, SHA256-verifiziert, abbrechbar und fortsetzbar). Erst danach
    ist das Diktat bereit.
 
-### Variante B — nur die exe (portabel)
+### Variante B — portabel (exe + Engine-DLLs)
 
-Die einzelne `private-wispr.exe` aus `src-tauri\target\release\` auf den
-Ziel-Laptop kopieren und direkt ausführen — keine Installation nötig (alle
-UI-Assets sind in die exe eingebettet). Einstellungen und Modell liegen
-unabhängig davon unter `%LOCALAPPDATA%\PrivateWispr\`.
+Alle `*.dll` **und** `private-wispr.exe` aus `src-tauri\target\release\` zusammen
+in einen Ordner auf den Ziel-Laptop kopieren und die exe direkt ausführen —
+keine Installation nötig (UI-Assets sind eingebettet, aber die Engine-Backends
+— `ggml-vulkan.dll`, CPU-Varianten, `transcribe.dll` — müssen neben der exe
+liegen). Einstellungen und Modell liegen unabhängig davon unter
+`%LOCALAPPDATA%\PrivateWispr\`.
 
 Hinweise für beide Varianten:
 
