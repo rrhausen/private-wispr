@@ -1,0 +1,30 @@
+# Build artifacts
+node_modules/
+dist/
+src-tauri/target/
+target/
+
+# Models & binaries (groß, per Download-Manager der App)
+*.gguf
+*.onnx
+models/
+resources/bin/
+bin/
+
+# Audio / Stimmdaten nicht ins Repo (Privatsphäre-Default; Ground-Truth-Texte bleiben versioniert)
+eval/audio/
+*.wav
+*.m4a
+*.opus
+
+# Secrets & lokal
+.env
+.env.*
+*.local.json
+
+# OS / Editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/
