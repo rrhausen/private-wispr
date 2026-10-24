@@ -70,19 +70,14 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
     })
 }
 
-#[derive(Serialize)]
-struct MicDevice {
-    name: String,
-}
-
 #[tauri::command]
-fn list_devices() -> Result<Vec<MicDevice>, String> {
+fn list_devices() -> Result<Vec<String>, String> {
     // Monitor-Quellen sind Lautsprecher-Ausgaben, keine Mikrofone.
     let devices = handy_recorder::list_input_devices().map_err(|e| e.to_string())?;
     Ok(devices
         .into_iter()
         .filter(|d| !d.is_monitor)
-        .map(|d| MicDevice { name: d.name })
+        .map(|d| d.name)
         .collect())
 }
 
