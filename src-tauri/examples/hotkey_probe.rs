@@ -6,12 +6,12 @@
 use std::time::{Duration, Instant};
 
 fn main() {
-    println!("[probe] Phase 1: roher KeyboardListener, 15 s lang (bitte Tasten drücken)");
+    println!("[probe] Phase 1: roher KeyboardListener, 120 s lang (bitte JETZT Tasten drücken)");
     match handy_keys::KeyboardListener::new() {
         Ok(listener) => {
             let t0 = Instant::now();
             let mut seen = 0usize;
-            while t0.elapsed() < Duration::from_secs(15) {
+            while t0.elapsed() < Duration::from_secs(120) {
                 match listener.recv_timeout(Duration::from_millis(200)) {
                     Ok(ev) => {
                         seen += 1;

@@ -99,6 +99,12 @@ Regel-Modul (M1) in denselben Einstiegspunkt.
 
 ## Bekannte Issues
 
+- **Kein Hotkey bei Fokus auf elevated/Admin-Fenstern:** Windows liefert
+  Tastenereignisse an Low-Level-Hooks normaler Integrität nicht, während ein
+  Fenster mit erhöhten Rechten den Fokus hat (UIPI). Verhalten identisch zu
+  Whispering/Handy (OpenWhispr #2059). Diktieren in normalen Fenstern
+  (Editor/Browser/VSCode) funktioniert. Eine echte Lösung wäre ein kleiner
+  elevated Helper-Prozess — Backlog, nicht M0.
 - **WebView2-White-Screen auf diesem Rechner (gelöst):** Die GPU-Beschleunigung
   des WebView2 crasht hier still (Multi-GPU: 7900X3D-iGPU + RTX 4090, die beim
   Start gleichzeitig das Vulkan-Modell lädt) und lässt das Fenster weiß erscheinen.
