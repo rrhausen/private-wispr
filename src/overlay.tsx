@@ -4,6 +4,8 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import "@fontsource-variable/public-sans";
+import "./App.css";
 
 type Phase = "recording" | "transcribing" | "done" | "error";
 

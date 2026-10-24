@@ -1,10 +1,10 @@
 // Hauptfenster (M1): Tabs Übersicht/Einstellungen. Übersicht zeigt Engine-
 // Status, Hotkey-Hinweise und letztes Diktat; Einstellungen (settings.tsx)
-// Hand-off-Ablageort, Mikrofon, Overlay, Autostart.
+// Hotkeys, Hand-off-Ablageort, Mikrofon, Overlay, Sound, Autostart, Modell.
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import SettingsPanel from "./settings";
+import SettingsPanel, { hotkeyLabel } from "./settings";
 
 interface StatusInfo {
   hotkeys: { cursor: string; handoff: string };
@@ -28,6 +28,18 @@ interface LastEvent {
   audio_secs: number;
   transcription_ms: number;
   target: string;
+}
+
+function statusCapsule(engine: StatusInfo["engine"] | undefined) {
+  if (!engine) return { tone: "busy", label: "Status…" } as const;
+  if (engine.ready) {
+    return {
+      tone: "ok",
+      label: `Bereit · ${engine.on_gpu ? "GPU" : engine.backend}`,
+    } as const;
+  }
+  if (engine.error) return { tone: "error", label: "Modell fehlt" } as const;
+  return { tone: "busy", label: "Modell lädt" } as const;
 }
 
 export default function App() {
@@ -70,77 +82,111 @@ export default function App() {
   }
 
   const engine = status?.engine;
+  const capsule = statusCapsule(engine);
 
   return (
-    <main className="dashboard">
-      <h1>
-        Private Wispr <span className="tag">M1</span>
-      </h1>
+    <main className="page">
+      <header className="app-header">
+        <div className="brand">
+          <span className="brand-mark">🎙</span>
+          <div>
+            <div className="brand-name">Private Wispr</div>
+            <div className="brand-sub">Diktat, lokal auf diesem Rechner</div>
+          </div>
+        </div>
+        <span className="capsule" data-tone={capsule.tone} style={{ marginLeft: "auto" }}>
+          <span className="dot" />
+          {capsule.label}
+        </span>
+      </header>
 
-      <nav className="tabs">
+      <nav className="segmented" role="tablist">
         <button
-          className={tab === "overview" ? "tab active" : "tab"}
+          className={tab === "overview" ? "segment active" : "segment"}
           onClick={() => setTab("overview")}
         >
+          <span className="check">{tab === "overview" ? "✓" : ""}</span>
           Übersicht
         </button>
         <button
-          className={tab === "settings" ? "tab active" : "tab"}
+          className={tab === "settings" ? "segment active" : "segment"}
           onClick={() => setTab("settings")}
         >
+          <span className="check">{tab === "settings" ? "✓" : ""}</span>
           Einstellungen
         </button>
       </nav>
 
       {tab === "overview" ? (
         <>
-          <section className="card">
-            <div className="row">
-              <span className="dot" data-on={engine?.ready ?? false} />
-              <span>
-                {engine?.ready
-                  ? `Bereit — ${engine.model} · ${engine.backend}${engine.on_gpu ? " (GPU)" : ""}`
-                  : "Engine wird geladen…"}
-              </span>
-            </div>
-            {engine?.error && (
-              <p className="error">
-                {engine.error}
-                <br />
-                Modell fehlt — entweder <code>scripts/download-model.ps1</code> ausführen
-                oder unten über „Einstellungen → Modell" in der App herunterladen.
-                <br />
-                Pfad: <code>{engine.model_path}</code>
-              </p>
-            )}
-          </section>
-
-          <section className="card hint">
-            <div>
-              <strong>{status?.hotkeys.cursor ?? "ctrl+alt+space"}</strong> halten, sprechen,
-              loslassen — der Text erscheint am Cursor.
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <strong>{status?.hotkeys.handoff ?? "ctrl+alt+h"}</strong> halten — das Diktat
-              geht als Eintrag in die Hand-off-Tagesdatei unter{" "}
-              <code>{handoffDir || "hand-off\\"}</code> (der Weg zu elevated Apps wie
-              Agenten-IDEs, die Strg+V nicht annehmen).
+          <section className="section">
+            <div className="section-head">Spracherkennung</div>
+            <div className="card">
+              <div className="row-line">
+                <div className="row-text">
+                  <span className="row-title">
+                    {engine?.ready
+                      ? `${engine.model} · ${engine.backend}${engine.on_gpu ? " · GPU" : ""}`
+                      : "Engine wird geladen…"}
+                  </span>
+                  <span className="row-sub">
+                    Sprache Deutsch · Text verlässt diesen Rechner nicht
+                  </span>
+                </div>
+              </div>
+              {engine?.error && (
+                <div className="notice" data-tone="error">
+                  <span className="notice-icon">⚠</span>
+                  <div>
+                    <strong>Modell fehlt.</strong> In{" "}
+                    <em>Einstellungen → Modell</em> direkt in der App herunterladen oder{" "}
+                    <code className="inline">scripts/download-model.ps1</code> ausführen.
+                    <br />
+                    Pfad: <code className="inline">{engine.model_path}</code>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
-          <section className="card">
-            <h2>Letztes Diktat</h2>
-            {last ? (
-              <>
-                <blockquote>{last.text}</blockquote>
-                <p className="meta">
-                  {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms
-                  Transkription · Ziel: {last.target}
-                </p>
-              </>
-            ) : (
-              <p className="meta">Noch nichts diktiert.</p>
-            )}
+          <section className="section">
+            <div className="section-head">Diktat — Taste halten, sprechen, loslassen</div>
+            <div className="card">
+              <div className="row-line">
+                <div className="row-text">
+                  <span className="row-title">Am Cursor einfügen</span>
+                  <span className="row-sub">Text erscheint direkt in der fokussierten App</span>
+                </div>
+                <span className="kbd">{hotkeyLabel(hotkeys.cursor)}</span>
+              </div>
+              <div className="divider" />
+              <div className="row-line">
+                <div className="row-text">
+                  <span className="row-title">Hand-off-Tagesdatei</span>
+                  <span className="row-sub">
+                    Für elevated Apps (z. B. Agenten-IDEs), die Strg+V nicht annehmen
+                  </span>
+                </div>
+                <span className="kbd">{hotkeyLabel(hotkeys.handoff)}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="section">
+            <div className="section-head">Letztes Diktat</div>
+            <div className="card">
+              {last ? (
+                <>
+                  <blockquote className="quote">{last.text}</blockquote>
+                  <span className="meta-line">
+                    {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms
+                    Transkription · Ziel: {last.target}
+                  </span>
+                </>
+              ) : (
+                <span className="row-sub">Noch nichts diktiert.</span>
+              )}
+            </div>
           </section>
         </>
       ) : (
@@ -158,7 +204,7 @@ export default function App() {
         />
       )}
 
-      <footer className="meta">Privat und lokal — Audio verlässt diesen Rechner nicht.</footer>
+      <footer className="foot">Privat und lokal — Audio verlässt diesen Rechner nicht.</footer>
     </main>
   );
 }

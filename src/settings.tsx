@@ -1,5 +1,7 @@
 // Einstellungen (M1 Sprint 1): Hotkeys (Key-Capture, Konflikt-Erkennung),
-// Hand-off-Ablageort, Mikrofon, Overlay, Autostart.
+// Hand-off-Ablageort, Mikrofon, Overlay, Sound, Autostart, Modell-Download.
+// Aufbau: Sektionskopf über der Karte, Zeilen mit Titel/Untertitel links und
+// Control rechts — eine Control-Breite pro Karte für ruhige Kanten.
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -40,10 +42,6 @@ interface DownloadEvent {
 
 const MODEL_MB = 705;
 
-function mb(n: number): string {
-  return (n / (1024 * 1024)).toFixed(0);
-}
-
 const KEY_LABELS: Record<string, string> = {
   ctrl: "Strg",
   alt: "Alt",
@@ -54,11 +52,53 @@ const KEY_LABELS: Record<string, string> = {
 };
 
 /** handy-keys-String („ctrl+alt+space") als deutsche Anzeige („Strg+Alt+Leertaste"). */
-function hotkeyLabel(hotkey: string): string {
+export function hotkeyLabel(hotkey: string): string {
   return hotkey
     .split("+")
     .map((part) => KEY_LABELS[part.trim()] ?? part.trim())
     .join("+");
+}
+
+function mb(n: number): string {
+  return (n / (1024 * 1024)).toFixed(0);
+}
+
+function Section({ head, children }: { head: string; children: ReactNode }) {
+  return (
+    <section className="section">
+      <div className="section-head">{head}</div>
+      <div className="card">{children}</div>
+    </section>
+  );
+}
+
+function SwitchRow({
+  title,
+  subtitle,
+  checked,
+  onChange,
+}: {
+  title: string;
+  subtitle?: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className="row-line">
+      <div className="row-text">
+        <span className="row-title">{title}</span>
+        {subtitle && <span className="row-sub">{subtitle}</span>}
+      </div>
+      <input
+        type="checkbox"
+        className="switch"
+        role="switch"
+        aria-checked={checked}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </div>
+  );
 }
 
 export default function SettingsPanel({
@@ -161,6 +201,39 @@ export default function SettingsPanel({
     invoke("capture_hotkey").catch(console.error);
   }
 
+  function hotkeyRow(target: Exclude<CaptureTarget, null>, title: string, subtitle: string, hotkey: string) {
+    return (
+      <div className="row-line" key={target}>
+        <div className="row-text">
+          <span className="row-title">{title}</span>
+          <span className="row-sub">{subtitle}</span>
+        </div>
+        {capturing === target ? (
+          <>
+            <span className="kbd capturing">Taste drücken…</span>
+            <button
+              className="btn quiet"
+              onClick={() => invoke("cancel_hotkey_capture").catch(() => {})}
+            >
+              Abbrechen
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="kbd">{hotkeyLabel(hotkey)}</span>
+            <button
+              className="btn"
+              disabled={capturing !== null}
+              onClick={() => startCapture(target)}
+            >
+              Ändern
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
   async function applyHandoffDir(path: string | null) {
     setHandoffError(null);
     try {
@@ -206,62 +279,30 @@ export default function SettingsPanel({
     }
   }
 
-  function hotkeyRow(
-    target: Exclude<CaptureTarget, null>,
-    desc: string,
-    hotkey: string,
-  ) {
-    return (
-      <div className="hotkey-row" key={target}>
-        <span className="desc">{desc}</span>
-        {capturing === target ? (
-          <>
-            <kbd className="capturing">Taste drücken…</kbd>
-            <button className="btn" onClick={() => invoke("cancel_hotkey_capture").catch(() => {})}>
-              Abbrechen
-            </button>
-          </>
-        ) : (
-          <>
-            <kbd>{hotkeyLabel(hotkey)}</kbd>
-            <button
-              className="btn"
-              disabled={capturing !== null}
-              onClick={() => startCapture(target)}
-            >
-              Ändern
-            </button>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  function modelCard() {
+  function modelBody(): ReactNode {
     const busy =
       download?.state === "downloading" ||
       download?.state === "resuming" ||
       download?.state === "verifying";
 
-    let body: ReactNode;
     if (busy) {
       const received = download.received ?? 0;
       const total = download.total ?? MODEL_MB * 1024 * 1024;
       const pct = Math.min(100, (received / total) * 100);
-      body = (
+      return (
         <>
-          <div className="progress">
-            <span style={{ width: `${pct}%` }} />
+          <div className="progress-track">
+            <span className="progress-fill" style={{ width: `${pct}%` }} />
           </div>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <span className="meta">
-              {download!.state === "verifying"
+          <div className="row-line">
+            <span className="row-sub">
+              {download.state === "verifying"
                 ? "Prüfsumme wird verifiziert…"
                 : `${mb(received)} / ${mb(total)} MB`}
             </span>
-            {download!.state !== "verifying" && (
+            {download.state !== "verifying" && (
               <button
-                className="btn"
+                className="btn quiet"
                 onClick={() => invoke("cancel_model_download").catch(() => {})}
               >
                 Abbrechen
@@ -270,92 +311,132 @@ export default function SettingsPanel({
           </div>
         </>
       );
-    } else if (download?.state === "error") {
-      body = (
+    }
+    if (download?.state === "error") {
+      return (
         <>
-          <p className="error">{download.message}</p>
-          <button className="btn primary" onClick={startDownload}>
-            Erneut versuchen
-          </button>
+          <div className="notice" data-tone="error">
+            <span className="notice-icon">⚠</span>
+            <div>{download.message}</div>
+          </div>
+          <div className="row-line">
+            <span className="row-sub">Der Teilstand bleibt erhalten.</span>
+            <button className="btn primary" onClick={startDownload}>
+              Erneut versuchen
+            </button>
+          </div>
         </>
       );
-    } else if (download?.state === "cancelled") {
-      body = (
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <span className="meta">Abgebrochen — Teilstand bleibt erhalten und wird fortgesetzt.</span>
+    }
+    if (download?.state === "cancelled") {
+      return (
+        <div className="row-line">
+          <span className="row-sub">Abgebrochen — Teilstand bleibt erhalten.</span>
           <button className="btn primary" onClick={startDownload}>
             Fortsetzen
           </button>
         </div>
       );
-    } else if (modelPresent || download?.state === "done") {
-      body = engineReady ? (
-        <p className="meta">Modell vorhanden ✓ — Engine bereit ({engineModel}).</p>
-      ) : (
-        <p className="meta">Modell vorhanden ✓ — Engine wird geladen…</p>
+    }
+    if (modelPresent || download?.state === "done") {
+      return (
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">
+              {engineReady ? "Parakeet TDT 0.6B v3 (Q8)" : "Modell wird geladen…"}
+            </span>
+            <span className="row-sub">
+              {engineReady
+                ? `Bereit · ${engineModel} · Vulkan-GPU`
+                : "Engine startet nach dem Download automatisch"}
+            </span>
+          </div>
+          <span className="capsule" data-tone={engineReady ? "ok" : "busy"}>
+            <span className="dot" />
+            {engineReady ? "OK" : "lädt"}
+          </span>
+        </div>
       );
-    } else {
-      body = (
-        <>
-          <p className="meta">
-            Sprachmodell (Parakeet TDT 0.6B v3, Q8) von HuggingFace laden — {MODEL_MB} MB,
-            mit SHA256-Verifikation, abbrechbar und fortsetzbar.
-          </p>
+    }
+    return (
+      <>
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Parakeet TDT 0.6B v3 (Q8)</span>
+            <span className="row-sub">
+              {MODEL_MB} MB von HuggingFace · SHA256-verifiziert · abbrechbar und
+              fortsetzbar
+            </span>
+          </div>
+        </div>
+        <div className="row-line">
+          <span className="row-sub">Lokale Spracherkennung, dauerhaft geladen.</span>
           <button className="btn primary" onClick={startDownload}>
             Modell herunterladen
           </button>
-        </>
-      );
-    }
-
-    return (
-      <section className="card" key="model">
-        <h2>Modell</h2>
-        {body}
-      </section>
+        </div>
+      </>
     );
   }
 
   return (
     <div className="settings">
-      <section className="card">
-        <h2>Tastenkombinationen (halten zum Diktieren)</h2>
-        {hotkeyRow("cursor", "Diktat am Cursor", hotkeys.cursor)}
-        {hotkeyRow("handoff", "Hand-off-Diktat (Tagesdatei)", hotkeys.handoff)}
-        <p className="meta">
-          Gewünschte Kombination drücken — auch nur Modifier (z. B. nur Strg+Alt) sind
-          möglich. Escape bricht ab. Nackte Tasten ohne Modifier sind nicht erlaubt,
-          weil sie in anderen Apps blockt wären.
-        </p>
-        {hotkeyError && <p className="error">{hotkeyError}</p>}
-      </section>
+      <Section head="Tastenkombinationen — halten zum Diktieren">
+        {hotkeyRow(
+          "cursor",
+          "Diktat am Cursor",
+          "Text erscheint in der fokussierten App",
+          hotkeys.cursor,
+        )}
+        <div className="divider" />
+        {hotkeyRow(
+          "handoff",
+          "Hand-off-Diktat",
+          "Eintrag in die Tagesdatei (für elevated Apps)",
+          hotkeys.handoff,
+        )}
+        <span className="row-sub">
+          Gewünschte Kombination drücken — auch nur Modifier (z. B. Strg+Alt). Escape bricht
+          ab. Nackte Tasten ohne Modifier sind nicht erlaubt, weil sie in anderen Apps
+          blockt wären.
+        </span>
+        {hotkeyError && (
+          <div className="notice" data-tone="error">
+            <span className="notice-icon">⚠</span>
+            <div>{hotkeyError}</div>
+          </div>
+        )}
+      </Section>
 
-      <section className="card">
-        <h2>Hand-off-Ablageort</h2>
-        <p className="meta">
-          Diktate des Hand-off-Modus landen als Tagesdatei <code>JJJJ-MM-TT.md</code> in
-          diesem Ordner.
-        </p>
-        <div className="path-row">
-          <code className="path">{effectiveHandoffDir}</code>
-        </div>
-        <div className="row" style={{ marginTop: 8, gap: 8 }}>
+      <Section head="Hand-off-Ablageort">
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Tagesdateien (JJJJ-MM-TT.md)</span>
+            <span className="row-sub">{effectiveHandoffDir}</span>
+          </div>
           <button className="btn" onClick={() => void pickHandoffDir()}>
-            Durchsuchen…
+            Auswählen…
           </button>
-          {customHandoffDir !== null && (
-            <button className="btn" onClick={() => void applyHandoffDir(null)}>
+        </div>
+        {customHandoffDir !== null && (
+          <div className="row-line">
+            <span className="row-sub">Zurück zum Projekt-Standardordner.</span>
+            <button className="btn quiet" onClick={() => void applyHandoffDir(null)}>
               Standard wiederherstellen
             </button>
-          )}
-        </div>
-        {handoffError && <p className="error">{handoffError}</p>}
-      </section>
+          </div>
+        )}
+        {handoffError && (
+          <div className="notice" data-tone="error">
+            <span className="notice-icon">⚠</span>
+            <div>{handoffError}</div>
+          </div>
+        )}
+      </Section>
 
-      <section className="card">
-        <h2>Mikrofon</h2>
+      <Section head="Mikrofon">
         <select
-          className="mic-select"
+          className="select"
           value={mic ?? ""}
           onChange={(e) => onMicChange(e.target.value === "" ? null : e.target.value)}
         >
@@ -366,42 +447,37 @@ export default function SettingsPanel({
             </option>
           ))}
         </select>
-        <p className="meta">
-          Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen
-          (Bluetooth-Headsets müssen verbunden und als Eingabegerät aktiv sein).
-        </p>
-      </section>
+        <span className="row-sub">
+          Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen (Bluetooth-Headsets
+          müssen verbunden und als Eingabegerät aktiv sein).
+        </span>
+      </Section>
 
-      {modelCard()}
+      <Section head="Modell">
+        {modelBody()}
+      </Section>
 
-      <section className="card">
-        <h2>Anzeige, Sound &amp; Start</h2>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={overlay}
-            onChange={(e) => toggleOverlay(e.target.checked)}
-          />
-          Overlay-Pille während des Diktats anzeigen
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={feedback}
-            onChange={(e) => toggleFeedback(e.target.checked)}
-          />
-          Dezenten Klick beim Aufnahme-Start abspielen
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={autostart}
-            onChange={(e) => void toggleAutostart(e.target.checked)}
-          />
-          Private Wispr nach Windows-Start automatisch starten
-        </label>
-      </section>
+      <Section head="Anzeige, Sound & Start">
+        <SwitchRow
+          title="Overlay-Pille während des Diktats"
+          subtitle="Zustand am unteren Bildschirmrand, ohne Fokus zu rauben"
+          checked={overlay}
+          onChange={toggleOverlay}
+        />
+        <div className="divider" />
+        <SwitchRow
+          title="Klick beim Aufnahme-Start"
+          subtitle="Dezenter Doppelklick als Aufnahme-Bestätigung"
+          checked={feedback}
+          onChange={toggleFeedback}
+        />
+        <div className="divider" />
+        <SwitchRow
+          title="Autostart mit Windows"
+          checked={autostart}
+          onChange={(v) => void toggleAutostart(v)}
+        />
+      </Section>
     </div>
   );
 }
-

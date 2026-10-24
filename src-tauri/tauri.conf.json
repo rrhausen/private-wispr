@@ -14,8 +14,10 @@
       {
         "label": "main",
         "title": "Private Wispr",
-        "width": 560,
-        "height": 660,
+        "width": 600,
+        "height": 760,
+        "minWidth": 480,
+        "minHeight": 560,
         "resizable": true,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu"
       },

@@ -1,277 +1,475 @@
-/* Dashboard (Hauptfenster) */
+/*
+ * Private Wispr — UI-Design (M1).
+ *
+ * Eigenständige CSS-Umsetzung; Layout-Grammatik und Farbwelt sind als
+ * Konzept-Blaupause von Blitztext abgeleitet (siehe NOTICE.md): eine ruhige
+ * Nachtseite, Karten mit kleinem Sektionskopf darüber, genau ein Akzent
+ * (Lilac) für Aktionen und Auswahl, Public Sans, Kapsel-Buttons.
+ */
+
 :root {
-  font-family: "Segoe UI", Inter, system-ui, sans-serif;
-  color: #e8e8ee;
+  --page: #050722; /* Fläche hinter den Karten */
+  --card: #0e102f; /* Karten */
+  --card-edge: rgba(255, 255, 255, 0.07);
+  --inset: #191b46; /* Füllungen in Karten: Felder, Tracks */
+  --tonal: rgba(187, 132, 223, 0.26); /* Auswahl / tonale Flächen */
+  --on-tonal: #ffffff;
+  --accent: #bb84df; /* Lilac-Akzent für Text, Icons, Auswahl */
+  --primary: #8337a8; /* gefüllte Haupt-Buttons */
+  --primary-pressed: #5f287b;
+  --success: #5bdfbd;
+  --error: #d94c76;
+  --text: #f5f6fb;
+  --muted: rgba(242, 244, 248, 0.55);
+  --faint: rgba(242, 244, 248, 0.34);
+  --border: rgba(255, 255, 255, 0.1);
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --font-ui: "Public Sans Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", Consolas, monospace;
+
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  color: var(--text);
   background: transparent;
+  font-size: 14px;
 }
 
 body {
   margin: 0;
-  background: linear-gradient(160deg, #17171f 0%, #1d1d29 100%);
+  background: var(--page);
   min-height: 100vh;
 }
 
-.dashboard {
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 24px 20px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+* {
+  box-sizing: border-box;
 }
 
-h1 {
-  font-size: 22px;
-  margin: 0;
+button {
+  font-family: inherit;
+}
+
+/* ── Grundgerüst ──────────────────────────────────────────────── */
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 18px 22px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100vh;
+}
+
+/* Kopf: Marke links, Motor-Status als Kapsel rechts. */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 6px;
+}
+
+.brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
-.tag {
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  background: var(--tonal);
+  border: 1px solid rgba(187, 132, 223, 0.4);
+}
+
+.brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.brand-sub {
   font-size: 11px;
-  font-weight: 600;
-  color: #b9a7ff;
-  background: rgba(122, 92, 255, 0.15);
-  border: 1px solid rgba(122, 92, 255, 0.4);
-  padding: 2px 8px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+/* Status-Kapsel (Icon + Text auf tonaler Fläche). */
+.capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--tonal);
+  white-space: nowrap;
+}
+
+.capsule .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.capsule[data-tone="ok"] .dot {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(91, 223, 189, 0.7);
+}
+
+.capsule[data-tone="error"] .dot {
+  background: var(--error);
+  box-shadow: 0 0 6px rgba(217, 76, 118, 0.7);
+}
+
+.capsule[data-tone="busy"] .dot {
+  background: var(--accent);
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── Umschalter (Segmented, mit Häkchen im aktiven Teil) ─────── */
+
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.segment {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 130ms ease, color 130ms ease;
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment.active {
+  background: var(--tonal);
+  color: var(--on-tonal);
+}
+
+.segment .check {
+  display: inline-block;
+  width: 11px;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* ── Sektionen: kleiner Kopf über der Karte ──────────────────── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.section-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 2px;
+  letter-spacing: 0.01em;
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-
-.row {
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius-m);
+  padding: 14px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
 }
 
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #6b6b7d;
-  flex: none;
-}
+/* ── Zeilen: Titel (+ Untertitel) links, Control rechts ──────── */
 
-.dot[data-on="true"] {
-  background: #4ade80;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-}
-
-.hint strong {
-  font-family: "Cascadia Code", Consolas, monospace;
-  color: #b9a7ff;
-}
-
-.error {
-  margin: 10px 0 0;
-  color: #ff9d9d;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-h2 {
-  font-size: 14px;
-  margin: 0 0 8px;
-  color: #a0a0b4;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.mic-select {
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8e8ee;
-  font-size: 14px;
-}
-
-.mic-select option {
-  background: #1d1d29;
-}
-
-blockquote {
-  margin: 0;
-  padding: 10px 12px;
-  background: rgba(122, 92, 255, 0.08);
-  border-left: 3px solid #7a5cff;
-  border-radius: 6px;
-  font-size: 15px;
-  white-space: pre-wrap;
-}
-
-.meta {
-  color: #8a8a9c;
-  font-size: 12px;
-  margin: 8px 0 0;
-}
-
-footer.meta {
-  text-align: center;
-  margin-top: auto;
-}
-
-code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-/* ── Tabs & Einstellungen (M1) ─────────────────────────────────── */
-
-.tabs {
+.row-line {
   display: flex;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 4px;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
 }
 
-.tab {
+.row-text {
   flex: 1;
-  padding: 7px 0;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: #a0a0b4;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 120ms, color 120ms;
-}
-
-.tab:hover {
-  color: #e8e8ee;
-}
-
-.tab.active {
-  background: rgba(122, 92, 255, 0.22);
-  color: #d6c9ff;
-}
-
-.settings {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 2px;
 }
 
-.btn {
-  padding: 7px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.07);
-  color: #e8e8ee;
+.row-title {
   font-size: 13px;
+  line-height: 1.3;
+}
+
+.row-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px -14px;
+}
+
+/* ── Controls ─────────────────────────────────────────────────── */
+
+/* Tonal-Kapsel (sekundäre Aktion) und gefüllte Kapsel (Hauptaktion). */
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-tonal);
+  background: var(--tonal);
   cursor: pointer;
-  transition: background 120ms;
+  transition: transform 100ms ease, filter 120ms ease, opacity 120ms ease;
+  white-space: nowrap;
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.13);
+  filter: brightness(1.12);
+}
+
+.btn:active {
+  transform: scale(0.97);
 }
 
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
+  transform: none;
 }
 
 .btn.primary {
-  background: rgba(122, 92, 255, 0.3);
-  border-color: rgba(122, 92, 255, 0.5);
+  color: #fff;
+  background: var(--primary);
 }
 
-.btn.primary:hover {
-  background: rgba(122, 92, 255, 0.42);
+.btn.primary:active {
+  background: var(--primary-pressed);
 }
 
-.btn.danger {
-  color: #ff9d9d;
+.btn.quiet {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
-.path-row {
-  margin-top: 6px;
+.btn.quiet:hover {
+  color: var(--text);
+}
+
+/* Schalter im macOS-Stil: Kapsel-Track mit Knob. */
+.switch {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 150ms ease;
+  margin: 0;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: left 150ms ease;
+}
+
+.switch:checked {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch:checked::after {
+  left: 16px;
+}
+
+.switch:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Auswahlfeld (Mikrofon) im Inset-Look. */
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+  background: var(--inset);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.select option {
+  background: var(--card);
+  color: var(--text);
+}
+
+/* Tastenkombination als Chip. */
+.kbd {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.kbd.capturing {
+  color: var(--accent);
+  border-color: rgba(187, 132, 223, 0.55);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+/* Fortschritt: Inset-Track mit Akzent-Füllung. */
+.progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--inset);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+/* Hinweis/Kapsel-Fläche mit Tint (Info, Fehler). */
+.notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: rgba(187, 132, 223, 0.12);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notice[data-tone="error"] {
+  background: rgba(217, 76, 118, 0.14);
+}
+
+.notice .notice-icon {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.notice[data-tone="error"] .notice-icon {
+  color: var(--error);
+}
+
+.notice strong {
+  font-weight: 600;
+}
+
+/* Letztes Diktat als Sprechblase. */
+.quote {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--inset);
+  border-radius: var(--radius-s);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meta-line {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+code.inline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--inset);
+  padding: 1px 5px;
+  border-radius: 5px;
 }
 
 .path {
   display: block;
-  padding: 6px 8px;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--inset);
+  border-radius: var(--radius-s);
+  padding: 7px 9px;
   word-break: break-all;
 }
 
-.check-row {
+/* Fußzeile. */
+.foot {
+  margin-top: auto;
+  padding-top: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.settings {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  font-size: 14px;
-  padding: 5px 0;
-  cursor: pointer;
-}
-
-.check-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #7a5cff;
-  cursor: pointer;
-}
-
-.hotkey-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-
-.hotkey-row .desc {
-  flex: 1;
-  font-size: 14px;
-}
-
-.hotkey-row kbd {
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 12px;
-  color: #d6c9ff;
-  background: rgba(122, 92, 255, 0.14);
-  border: 1px solid rgba(122, 92, 255, 0.4);
-  border-radius: 6px;
-  padding: 3px 8px;
-  white-space: nowrap;
-}
-
-.hotkey-row kbd.capturing {
-  animation: pulse 1s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.45;
-  }
-}
-
-.progress {
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  margin: 10px 0 4px;
-}
-
-.progress > span {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #7a5cff, #9b7bff);
-  border-radius: 4px;
-  transition: width 200ms;
 }
 
 /* ── Overlay-Pille (overlay.html) ─────────────────────────────── */
@@ -284,12 +482,12 @@ code {
   width: fit-content;
   padding: 12px 22px;
   border-radius: 999px;
-  background: rgba(24, 22, 36, 0.92);
-  border: 1px solid rgba(150, 120, 255, 0.45);
-  box-shadow: 0 8px 32px rgba(90, 60, 200, 0.35);
+  background: var(--card);
+  border: 1px solid rgba(187, 132, 223, 0.45);
+  box-shadow: 0 8px 32px rgba(20, 10, 60, 0.55);
   backdrop-filter: blur(8px);
-  font-family: "Segoe UI", Inter, system-ui, sans-serif;
-  color: #ece8ff;
+  font-family: var(--font-ui);
+  color: var(--text);
   user-select: none;
 }
 
@@ -299,7 +497,7 @@ code {
 
 .pill .label {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   min-width: 64px;
 }
 
@@ -313,7 +511,7 @@ code {
 .pill .bar {
   width: 4px;
   border-radius: 2px;
-  background: #9b7bff;
+  background: var(--accent);
   transition: height 90ms ease-out;
 }
 
@@ -321,8 +519,8 @@ code {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2.5px solid rgba(155, 123, 255, 0.25);
-  border-top-color: #9b7bff;
+  border: 2.5px solid rgba(187, 132, 223, 0.25);
+  border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
 

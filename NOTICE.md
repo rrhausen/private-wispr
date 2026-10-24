@@ -14,7 +14,10 @@ npm-Pakete) werden gemäß ihrer Lizenzen als Abhängigkeiten genutzt.
 - **OpenWhispr** (MIT) — Wörterbuch-Prompt-Budgets, Sidecar-Betrieb,
   Auto-Lerner-Idee, windows-key-listener-Muster (key-up-PTT)
 - **Blitztext** (cmagnussen, MIT) — Prompt-Querschnittsregeln, Text-Fitting,
-  Fokus-Check, „kein stiller Fallback", Meeting-Struktur
+  Fokus-Check, „kein stiller Fallback", Meeting-Struktur; **UI-Design-Prinzipien**
+  (M1: ruhige Nachtseite, Karten mit Sektionskopf darüber, ein Lilac-Akzent,
+  Kapsel-Buttons, Public Sans) — als Konzept studiert und eigenständig in CSS
+  umgesetzt, keine Übernahme von Stylesheet-/SwiftUI-Code
 - **Epicenter/Whispering** (AGPL; nur Verhaltensanalyse) — Mikrofon-Handling
 
 ## Abhängigkeiten (normaler Gebrauch)
