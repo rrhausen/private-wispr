@@ -23,8 +23,12 @@ anyhow = "1"
 log = "0.4"
 once_cell = "1"
 hound = "3.5"
-enigo = "0.6.1"
 arboard = "3"
+windows = { version = "0.61", features = [
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Foundation",
+] }
 dirs = "5"
 sha2 = "0.10"
 handy-keys = "0.3.4"

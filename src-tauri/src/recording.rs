@@ -122,38 +122,56 @@ fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
 
 /// Mikrofon öffnen und Aufnahme starten (on-demand wie Handy; Warm-State M1).
 /// `device`: gewählter Geräte-NAME (aus der UI); hier wird er auf die interne
-/// Geräte-ID aufgelöst, weil `RecorderConfig.device` die ID will (Handy-
-/// Verhalten: UI zeigt Namen, Recorder bekommt die ID). Ist das gewählte
-/// Gerät nicht (mehr) vorhanden, fällt die Aufnahme auf den System-Standard
-/// zurück statt still zu scheitern (Meldung im Log).
+/// Geräte-ID aufgelöst, weil `RecorderConfig.device` die ID will.
+///
+/// Fallback-Kette (Blaupause Epicenter/Whispering-Verhalten, eigenständig
+/// implementiert): gewähltes Gerät → einmaliger Retry nach kurzer Pause
+/// (Bluetooth-HFP/SCO-Aufbau braucht Sekunden) → System-Standard → erstes
+/// aktives Eingabegerät. Jeder Fallback wird sichtbar geloggt.
 pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording> {
-    let device_id = device.as_deref().and_then(|name| {
-        handy_recorder::list_input_devices()
-            .ok()
-            .and_then(|devices| {
-                devices
-                    .into_iter()
-                    .find(|d| !d.is_monitor && d.name == name)
-                    .map(|d| d.id)
-            })
-    });
+    let device_id = resolve_device_id(device.as_deref());
     if device.is_some() && device_id.is_none() {
         warn!(
-            "Gerät {:?} nicht in der Geräteliste gefunden; nutze System-Standard",
+            "Gerät {:?} nicht in der Geräteliste gefunden; nutze Fallback-Kette",
             device
         );
     }
-    let (recorder, used_fallback) = match open_recorder(device_id) {
-        Ok(recorder) => (recorder, false),
-        Err(e) if device.is_some() => {
-            warn!(
-                "Gerät '{:?}' nicht öffnenbar ({e:#}); falle auf System-Standard zurück",
-                device
-            );
-            (open_recorder(None)?, true)
+
+    // Versuch 1: gewähltes (oder aufgelöstes) Gerät.
+    if let Some(id) = device_id.clone() {
+        match open_recorder(Some(id)) {
+            Ok(recorder) => return finish_start(app, recorder, false),
+            Err(e) => {
+                warn!("Gerät '{:?}' schlug fehl ({e:#}); Retry in 600 ms (Bluetooth-Aufbauzeit)", device);
+            }
         }
-        Err(e) => return Err(e),
-    };
+        // Versuch 2: kurze Pause, dann nochmals (HFP/SCO-Link-Aufbau).
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        match open_recorder(device_id) {
+            Ok(recorder) => return finish_start(app, recorder, false),
+            Err(e) => warn!("Retry für '{:?}' schlug fehl ({e:#}); Fallback auf System-Standard", device),
+        }
+    }
+
+    // Versuch 3: System-Standard.
+    match open_recorder(None) {
+        Ok(recorder) => {
+            warn!("Aufnahme über System-Standard (gewähltes Gerät nicht verfügbar)");
+            return finish_start(app, recorder, true);
+        }
+        Err(e) => warn!("System-Standard schlug fehl ({e:#}); letzter Fallback: erstes aktives Gerät"),
+    }
+
+    // Versuch 4: erstes aktives Eingabegerät aus der Liste.
+    if let Some(first) = first_active_device_id() {
+        let recorder = open_recorder(Some(first))
+            .context("Auch das erste aktive Eingabegerät konnte nicht geöffnet werden")?;
+        return finish_start(app, recorder, true);
+    }
+    Err(anyhow::anyhow!("Kein Eingabegerät verfügbar"))
+}
+
+fn finish_start(app: &AppHandle, recorder: Recorder<SpoolSink>, used_fallback: bool) -> Result<ActiveRecording> {
     if used_fallback {
         let _ = app.emit("pw://mic-fallback", ());
     }
@@ -163,6 +181,26 @@ pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording>
         .start(sink)
         .map_err(|e| anyhow::anyhow!("Aufnahme-Start fehlgeschlagen: {}", e.error))?;
     Ok(ActiveRecording { recorder, started })
+}
+
+/// Namen aus der UI auf die interne Geräte-ID mappen.
+fn resolve_device_id(name: Option<&str>) -> Option<String> {
+    name.and_then(|n| {
+        handy_recorder::list_input_devices()
+            .ok()
+            .and_then(|devices| {
+                devices
+                    .into_iter()
+                    .find(|d| !d.is_monitor && d.name == n)
+                    .map(|d| d.id)
+            })
+    })
+}
+
+fn first_active_device_id() -> Option<String> {
+    handy_recorder::list_input_devices()
+        .ok()
+        .and_then(|devices| devices.into_iter().find(|d| !d.is_monitor).map(|d| d.id))
 }
 
 /// Aufnahme beenden und das gespoolte Audio zurückgeben.
