@@ -54,6 +54,7 @@ export default function SettingsPanel({
   onHandoffDirChange,
 }: Props) {
   const [overlay, setOverlay] = useState(true);
+  const [feedback, setFeedback] = useState(true);
   const [autostart, setAutostart] = useState(false);
   const [customHandoffDir, setCustomHandoffDir] = useState<string | null>(null);
   const [handoffError, setHandoffError] = useState<string | null>(null);
@@ -61,9 +62,12 @@ export default function SettingsPanel({
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<{ overlay_enabled: boolean; handoff_dir: string | null }>("get_settings")
+    invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null }>(
+      "get_settings",
+    )
       .then((s) => {
         setOverlay(s.overlay_enabled);
+        setFeedback(s.feedback_sound);
         setCustomHandoffDir(s.handoff_dir);
       })
       .catch(console.error);
@@ -148,6 +152,11 @@ export default function SettingsPanel({
   function toggleOverlay(enabled: boolean) {
     setOverlay(enabled);
     invoke("set_overlay_enabled", { enabled }).catch(console.error);
+  }
+
+  function toggleFeedback(enabled: boolean) {
+    setFeedback(enabled);
+    invoke("set_feedback_enabled", { enabled }).catch(console.error);
   }
 
   async function toggleAutostart(enabled: boolean) {
@@ -251,7 +260,7 @@ export default function SettingsPanel({
       </section>
 
       <section className="card">
-        <h2>Anzeige &amp; Start</h2>
+        <h2>Anzeige, Sound &amp; Start</h2>
         <label className="check-row">
           <input
             type="checkbox"
@@ -259,6 +268,14 @@ export default function SettingsPanel({
             onChange={(e) => toggleOverlay(e.target.checked)}
           />
           Overlay-Pille während des Diktats anzeigen
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={feedback}
+            onChange={(e) => toggleFeedback(e.target.checked)}
+          />
+          Dezenten Klick beim Aufnahme-Start abspielen
         </label>
         <label className="check-row">
           <input

@@ -8,6 +8,7 @@
 //! in-process (Worker-Prozess-Isolation kommt in M1), Paste noch ohne
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
+mod feedback;
 mod handoff;
 mod hotkey;
 mod paste;
@@ -134,6 +135,13 @@ fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn set_feedback_enabled(enabled: bool) -> Result<(), String> {
+    let mut settings = settings::load();
+    settings.feedback_sound = enabled;
+    settings::save(&settings).map_err(|e| e.to_string())
+}
+
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
 /// danach persistieren (bei Fehler bleibt die alte Belegung aktiv).
 #[tauri::command]
@@ -203,6 +211,7 @@ pub fn run() {
             get_settings,
             set_handoff_dir,
             set_overlay_enabled,
+            set_feedback_enabled,
             set_hotkeys,
             capture_hotkey,
             cancel_hotkey_capture
@@ -291,6 +300,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         Ok(active) => {
             *slot = Some(active);
             drop(slot);
+            feedback::play_click_if_enabled();
             overlay_show(app);
             overlay_emit(app, OverlayPayload { phase: "recording", message: None, level: None });
         }

@@ -51,6 +51,9 @@ pub struct Settings {
     /// Overlay-Pille anzeigen; default an.
     #[serde(default = "default_true")]
     pub overlay_enabled: bool,
+    /// Dezenter Klick beim Aufnahme-Start; default an.
+    #[serde(default = "default_true")]
+    pub feedback_sound: bool,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
 }
@@ -61,6 +64,7 @@ impl Default for Settings {
             mic_device: None,
             handoff_dir: None,
             overlay_enabled: true,
+            feedback_sound: true,
             hotkeys: HotkeySettings::default(),
         }
     }
