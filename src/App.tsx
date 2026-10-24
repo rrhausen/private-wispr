@@ -1,11 +1,15 @@
-// Hauptfenster (M0): Status der Engine, PTT-Hinweis, Mikrofonauswahl, letztes Diktat.
+// Hauptfenster (M1): Tabs Übersicht/Einstellungen. Übersicht zeigt Engine-
+// Status, Hotkey-Hinweise und letztes Diktat; Einstellungen (settings.tsx)
+// Hand-off-Ablageort, Mikrofon, Overlay, Autostart.
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import SettingsPanel from "./settings";
 
 interface StatusInfo {
   hotkeys: { cursor: string; handoff: string };
   mic: string | null;
+  handoff_dir: string;
   engine: {
     ready: boolean;
     model: string;
@@ -25,16 +29,21 @@ interface LastEvent {
 }
 
 export default function App() {
+  const [tab, setTab] = useState<"overview" | "settings">("overview");
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [last, setLast] = useState<LastEvent | null>(null);
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
+  const [handoffDir, setHandoffDir] = useState("");
 
   useEffect(() => {
-    invoke<StatusInfo>("status").then((s) => {
-      setStatus(s);
-      setMic(s.mic);
-    }).catch(console.error);
+    invoke<StatusInfo>("status")
+      .then((s) => {
+        setStatus(s);
+        setMic(s.mic);
+        setHandoffDir(s.handoff_dir);
+      })
+      .catch(console.error);
     invoke<string[]>("list_devices")
       .then((names) => setDevices(names))
       .catch(console.error);
@@ -57,69 +66,85 @@ export default function App() {
 
   return (
     <main className="dashboard">
-      <h1>Private Wispr <span className="tag">M0</span></h1>
+      <h1>
+        Private Wispr <span className="tag">M1</span>
+      </h1>
 
-      <section className="card">
-        <div className="row">
-          <span className="dot" data-on={engine?.ready ?? false} />
-          <span>
-            {engine?.ready
-              ? `Bereit — ${engine.model} · ${engine.backend}${engine.on_gpu ? " (GPU)" : ""}`
-              : "Engine wird geladen…"}
-          </span>
-        </div>
-        {engine?.error && (
-          <p className="error">
-            {engine.error}
-            <br />
-            <code>scripts/download-model.ps1</code> ausführen, dann App neu starten.
-            <br />
-            Pfad: <code>{engine.model_path}</code>
-          </p>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Mikrofon</h2>
-        <select
-          className="mic-select"
-          value={mic ?? ""}
-          onChange={(e) => chooseMic(e.target.value === "" ? null : e.target.value)}
+      <nav className="tabs">
+        <button
+          className={tab === "overview" ? "tab active" : "tab"}
+          onClick={() => setTab("overview")}
         >
-          <option value="">System-Standard</option>
-          {devices.map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
-        <p className="meta">
-          Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen
-          (Bluetooth-Headsets müssen verbunden und als Eingabegerät aktiv sein).
-        </p>
-      </section>
+          Übersicht
+        </button>
+        <button
+          className={tab === "settings" ? "tab active" : "tab"}
+          onClick={() => setTab("settings")}
+        >
+          Einstellungen
+        </button>
+      </nav>
 
-      <section className="card hint">
-        <div><strong>{status?.hotkeys.cursor ?? "ctrl+alt+space"}</strong> halten, sprechen, loslassen —
-        der Text erscheint am Cursor.</div>
-        <div style={{ marginTop: 8 }}>
-          <strong>{status?.hotkeys.handoff ?? "ctrl+alt+h"}</strong> halten — das Diktat geht als
-          Eintrag in die Hand-off-Tagesdatei <code>hand-off\JJJJ-MM-TT.md</code> (der Weg zu
-          elevated Apps wie Agenten-IDEs, die Strg+V nicht annehmen).
-        </div>
-      </section>
+      {tab === "overview" ? (
+        <>
+          <section className="card">
+            <div className="row">
+              <span className="dot" data-on={engine?.ready ?? false} />
+              <span>
+                {engine?.ready
+                  ? `Bereit — ${engine.model} · ${engine.backend}${engine.on_gpu ? " (GPU)" : ""}`
+                  : "Engine wird geladen…"}
+              </span>
+            </div>
+            {engine?.error && (
+              <p className="error">
+                {engine.error}
+                <br />
+                Modell fehlt — entweder <code>scripts/download-model.ps1</code> ausführen
+                oder unten über „Einstellungen → Modell" in der App herunterladen.
+                <br />
+                Pfad: <code>{engine.model_path}</code>
+              </p>
+            )}
+          </section>
 
-      <section className="card">
-        <h2>Letztes Diktat</h2>
-        {last ? (
-          <>
-            <blockquote>{last.text}</blockquote>
-            <p className="meta">
-              {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms Transkription · Ziel: {last.target}
-            </p>
-          </>
-        ) : (
-          <p className="meta">Noch nichts diktiert.</p>
-        )}
-      </section>
+          <section className="card hint">
+            <div>
+              <strong>{status?.hotkeys.cursor ?? "ctrl+alt+space"}</strong> halten, sprechen,
+              loslassen — der Text erscheint am Cursor.
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <strong>{status?.hotkeys.handoff ?? "ctrl+alt+h"}</strong> halten — das Diktat
+              geht als Eintrag in die Hand-off-Tagesdatei unter{" "}
+              <code>{handoffDir || "hand-off\\"}</code> (der Weg zu elevated Apps wie
+              Agenten-IDEs, die Strg+V nicht annehmen).
+            </div>
+          </section>
+
+          <section className="card">
+            <h2>Letztes Diktat</h2>
+            {last ? (
+              <>
+                <blockquote>{last.text}</blockquote>
+                <p className="meta">
+                  {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms
+                  Transkription · Ziel: {last.target}
+                </p>
+              </>
+            ) : (
+              <p className="meta">Noch nichts diktiert.</p>
+            )}
+          </section>
+        </>
+      ) : (
+        <SettingsPanel
+          mic={mic}
+          devices={devices}
+          onMicChange={chooseMic}
+          effectiveHandoffDir={handoffDir}
+          onHandoffDirChange={setHandoffDir}
+        />
+      )}
 
       <footer className="meta">Privat und lokal — Audio verlässt diesen Rechner nicht.</footer>
     </main>

@@ -64,6 +64,7 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
             "handoff": hotkey::HANDOFF_HOTKEY,
         },
         "mic": state.mic.lock().unwrap().clone(),
+        "handoff_dir": handoff::dir().display().to_string(),
         "engine": {
             "ready": info.loaded,
             "model": info.model_name,
@@ -98,6 +99,40 @@ fn set_mic(app: AppHandle, state: tauri::State<AppState>, name: Option<String>) 
     Ok(())
 }
 
+#[tauri::command]
+fn get_settings() -> settings::Settings {
+    settings::load()
+}
+
+/// Hand-off-Ablageort setzen. Der Ordner wird sofort angelegt (klarer Fehler
+/// statt späterem Fallback beim Diktat); `None` stellt den Default wieder her.
+#[tauri::command]
+fn set_handoff_dir(path: Option<String>) -> Result<String, String> {
+    if let Some(p) = &path {
+        std::fs::create_dir_all(p)
+            .map_err(|e| format!("Verzeichnis nicht anlegbar: {p} ({e})"))?;
+    }
+    let mut settings = settings::load();
+    settings.handoff_dir = path.clone();
+    settings::save(&settings).map_err(|e| e.to_string())?;
+    let effective = handoff::dir().display().to_string();
+    info!("Hand-off-Ablageort: {effective}");
+    Ok(effective)
+}
+
+#[tauri::command]
+fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::load();
+    settings.overlay_enabled = enabled;
+    settings::save(&settings).map_err(|e| e.to_string())?;
+    if !enabled {
+        if let Some(w) = app.get_webview_window("overlay") {
+            let _ = w.hide();
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -113,6 +148,11 @@ pub fn run() {
                 ])
                 .build(),
         )
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             let initial = settings::load();
             app.manage(AppState {
@@ -139,7 +179,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             status,
             list_devices,
-            set_mic
+            set_mic,
+            get_settings,
+            set_handoff_dir,
+            set_overlay_enabled
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
@@ -336,6 +379,9 @@ fn overlay_emit(app: &AppHandle, payload: OverlayPayload) {
 }
 
 fn overlay_show(app: &AppHandle) {
+    if !settings::load().overlay_enabled {
+        return;
+    }
     if let Some(w) = app.get_webview_window("overlay") {
         position_bottom_center(&w);
         let _ = w.show();

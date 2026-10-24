@@ -1,6 +1,7 @@
-//! Hand-off-Modus: Diktat wird statt am Cursor in die Tagesdatei unter
-//! `hand-off/` geschrieben — der Weg, Diktate an elevated Fenster/Apps
-//! (z. B. Agenten-IDEs) zu übergeben, für die UIPI injizierte Tasten blockt.
+//! Hand-off-Modus: Diktat wird statt am Cursor in die Tagesdatei unter dem
+//! konfigurierbaren Hand-off-Ablageort geschrieben — der Weg, Diktate an
+//! elevated Fenster/Apps (z. B. Agenten-IDEs) zu übergeben, für die UIPI
+//! injizierte Tasten blockt.
 //!
 //! Format pro Eintrag: `## HH:MM` + Text + Leerzeile, UTF-8, append-safe.
 
@@ -8,11 +9,19 @@ use anyhow::{Context, Result};
 use std::io::Write;
 use std::path::PathBuf;
 
-/// M0.3: fester Pfad laut Nutzervorgabe; wandert in M1 in die Einstellungen.
-const HANDOFF_DIR: &str = r"C:\Users\rrhau\projects\private-wispr\hand-off";
+use crate::settings;
+
+/// Aktives Hand-off-Verzeichnis: Einstellung, sonst der eingebaute Default
+/// (M0.3-Nutzervorgabe: das hand-off-Verzeichnis dieses Projekts).
+pub fn dir() -> PathBuf {
+    settings::load()
+        .handoff_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(settings::default_handoff_dir)
+}
 
 pub fn append(text: &str) -> Result<PathBuf> {
-    let dir = PathBuf::from(HANDOFF_DIR);
+    let dir = dir();
     std::fs::create_dir_all(&dir).context("hand-off-Verzeichnis anlegen fehlgeschlagen")?;
 
     let now = chrono::Local::now();

@@ -126,6 +126,154 @@ code {
   font-size: 12px;
 }
 
+/* ── Tabs & Einstellungen (M1) ─────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.tab {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #a0a0b4;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.tab:hover {
+  color: #e8e8ee;
+}
+
+.tab.active {
+  background: rgba(122, 92, 255, 0.22);
+  color: #d6c9ff;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  color: #e8e8ee;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: rgba(122, 92, 255, 0.3);
+  border-color: rgba(122, 92, 255, 0.5);
+}
+
+.btn.primary:hover {
+  background: rgba(122, 92, 255, 0.42);
+}
+
+.btn.danger {
+  color: #ff9d9d;
+}
+
+.path-row {
+  margin-top: 6px;
+}
+
+.path {
+  display: block;
+  padding: 6px 8px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+.check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #7a5cff;
+  cursor: pointer;
+}
+
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.hotkey-row .desc {
+  flex: 1;
+  font-size: 14px;
+}
+
+.hotkey-row kbd {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: #d6c9ff;
+  background: rgba(122, 92, 255, 0.14);
+  border: 1px solid rgba(122, 92, 255, 0.4);
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.hotkey-row kbd.capturing {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 10px 0 4px;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7a5cff, #9b7bff);
+  border-radius: 4px;
+  transition: width 200ms;
+}
+
 /* ── Overlay-Pille (overlay.html) ─────────────────────────────── */
 
 .pill {

@@ -1,15 +1,45 @@
-//! Minimaler Settings-Store (M0): JSON im Benutzerprofil.
-//! Der Umstieg auf tauri-plugin-store mit Schema-Migration folgt in M1
-//! (specs 4.10) — das Dateiformat bleibt dabei gleich strukturiert.
+//! Settings-Store: JSON im Benutzerprofil (`%LOCALAPPDATA%\PrivateWispr\settings.json`).
+//!
+//! Bewusst schlank statt tauri-plugin-store: jedes Feld hat einen Default,
+//! unbekannte Felder werden ignoriert, fehlende Felder fallen auf den Default
+//! zurück — dadurch bleibt das Format ohne explizite Schema-Migration
+//! erweiterbar (specs 4.10). Der Umstieg folgt, wenn Migrationen nötig werden.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Clone, Default, Serialize, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
     /// Name des gewählten Eingabegeräts; `None` = System-Standard.
+    #[serde(default)]
     pub mic_device: Option<String>,
+    /// Ablageort der Hand-off-Tagesdateien; `None` = eingebauter Default.
+    #[serde(default)]
+    pub handoff_dir: Option<String>,
+    /// Overlay-Pille anzeigen; default an.
+    #[serde(default = "default_true")]
+    pub overlay_enabled: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            mic_device: None,
+            handoff_dir: None,
+            overlay_enabled: true,
+        }
+    }
+}
+
+/// Fester Ablageort, solange die Einstellung nicht gesetzt ist (Nutzervorgabe
+/// aus M0.3 — das hand-off-Verzeichnis dieses Projekts).
+pub fn default_handoff_dir() -> PathBuf {
+    PathBuf::from(r"C:\Users\rrhau\projects\private-wispr\hand-off")
 }
 
 fn settings_path() -> PathBuf {
@@ -33,4 +63,25 @@ pub fn save(settings: &Settings) -> Result<()> {
     }
     std::fs::write(&path, serde_json::to_string_pretty(settings)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fehlende_felder_fallen_auf_default() {
+        // Alte M0-Settings ohne die neuen Felder müssen weiter parsebar sein.
+        let s: Settings = serde_json::from_str(r#"{"mic_device":"BT700"}"#).unwrap();
+        assert_eq!(s.mic_device.as_deref(), Some("BT700"));
+        assert_eq!(s.handoff_dir, None);
+        assert!(s.overlay_enabled);
+    }
+
+    #[test]
+    fn unbekannte_felder_werden_ignoriert() {
+        let s: Settings =
+            serde_json::from_str(r#"{"zukuenftiges_feld": 42, "overlay_enabled": true}"#).unwrap();
+        assert!(s.overlay_enabled);
+    }
 }
