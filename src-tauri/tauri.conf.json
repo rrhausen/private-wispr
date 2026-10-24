@@ -16,7 +16,8 @@
         "title": "Private Wispr",
         "width": 560,
         "height": 660,
-        "resizable": true
+        "resizable": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu"
       },
       {
         "label": "overlay",
@@ -31,7 +32,8 @@
         "resizable": false,
         "visible": false,
         "focus": false,
-        "shadow": false
+        "shadow": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu"
       }
     ],
     "security": {

@@ -97,6 +97,15 @@ Regressionstest gegen das Whispering-Fehlerbild). `--selftest` misst
 Transkriptionszeit und RTF; WER/Fachbegriff-Quote kommen mit dem
 Regel-Modul (M1) in denselben Einstiegspunkt.
 
+## Bekannte Issues
+
+- **WebView2-White-Screen auf diesem Rechner (gelöst):** Die GPU-Beschleunigung
+  des WebView2 crasht hier still (Multi-GPU: 7900X3D-iGPU + RTX 4090, die beim
+  Start gleichzeitig das Vulkan-Modell lädt) und lässt das Fenster weiß erscheinen.
+  Fix: `additionalBrowserArgs: "--disable-gpu"` (plus Tauri-Defaults) für beide
+  Fenster in `tauri.conf.json`. Für die winzige UI kostet das nichts. NICHT
+  entfernen, ohne es auf dem Zielsystem zu verifizieren.
+
 ## Vorbilder & Lizenzen
 
 `NOTICE.md` führt jede Übernahme (Handy, OpenWhispr, Blitztext — alle MIT).
