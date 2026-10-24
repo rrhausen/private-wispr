@@ -11,6 +11,7 @@
 mod feedback;
 mod handoff;
 mod hotkey;
+mod model_download;
 mod paste;
 mod recording;
 pub mod selftest;
@@ -75,6 +76,8 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
             "device": info.device,
             "error": info.error,
             "model_path": stt::default_model_path().display().to_string(),
+            "model_present": stt::default_model_path().exists(),
+            "model_downloading": model_download::is_running(),
         },
     })
 }
@@ -165,6 +168,17 @@ fn cancel_hotkey_capture() {
     hotkey::cancel_capture();
 }
 
+/// Modell-Download starten; Fortschritt via `pw://model-download`.
+#[tauri::command]
+fn download_model(app: AppHandle) -> Result<(), String> {
+    model_download::start(app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_model_download() {
+    model_download::cancel();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -214,15 +228,17 @@ pub fn run() {
             set_feedback_enabled,
             set_hotkeys,
             capture_hotkey,
-            cancel_hotkey_capture
+            cancel_hotkey_capture,
+            download_model,
+            cancel_model_download
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
 }
 
-fn load_engine(app: &AppHandle) {
-    match stt::Engine::load_default() {
-        Ok(engine) => {
+/// Engine laden (beim Start und nach abgeschlossenem Modell-Download).
+pub(crate) fn load_engine(app: &AppHandle) {
+    match stt::Engine::load_default() {        Ok(engine) => {
             let mut info = engine.info().clone();
             info.loaded = true;
             info!(

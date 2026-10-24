@@ -18,6 +18,8 @@ interface StatusInfo {
     device: string | null;
     error: string | null;
     model_path: string;
+    model_present: boolean;
+    model_downloading: boolean;
   };
 }
 
@@ -150,6 +152,9 @@ export default function App() {
           onMicChange={chooseMic}
           effectiveHandoffDir={handoffDir}
           onHandoffDirChange={setHandoffDir}
+          modelPresent={engine?.model_present ?? false}
+          engineReady={engine?.ready ?? false}
+          engineModel={engine?.model ?? ""}
         />
       )}
 

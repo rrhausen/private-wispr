@@ -35,6 +35,7 @@ windows = { version = "0.61", features = [
 dirs = "5"
 chrono = "0.4"
 sha2 = "0.10"
+ureq = "2"
 handy-keys = "0.3.4"
 handy-recorder = "0.1"
 # Engine-Kern; plattformspezifische Backend-Features siehe target-Tabellen

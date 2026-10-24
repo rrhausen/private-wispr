@@ -15,6 +15,9 @@ use transcribe_cpp::{Backend, Model, ModelOptions, RunOptions, Session, Task};
 #[allow(dead_code)]
 pub const MODEL_REPO: &str = "handy-computer/parakeet-tdt-0.6b-v3-gguf";
 pub const MODEL_FILE: &str = "parakeet-tdt-0.6b-v3-Q8_0.gguf";
+/// Gepinnte Revision (identisch zu scripts/download-model.ps1) — reproduzierbare
+/// Downloads unabhängig vom HF-Hauptbranch.
+pub const MODEL_REV: &str = "85ac09ea12fc4b1112fa76810059364bc6adc9de";
 #[allow(dead_code)]
 pub const MODEL_SHA256: &str = "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7";
 #[allow(dead_code)]

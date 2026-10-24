@@ -1,6 +1,6 @@
 // Einstellungen (M1 Sprint 1): Hotkeys (Key-Capture, Konflikt-Erkennung),
 // Hand-off-Ablageort, Mikrofon, Overlay, Autostart.
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -23,9 +23,26 @@ interface Props {
   onMicChange: (name: string | null) => void;
   effectiveHandoffDir: string;
   onHandoffDirChange: (effective: string) => void;
+  modelPresent: boolean;
+  engineReady: boolean;
+  engineModel: string;
 }
 
 type CaptureTarget = "cursor" | "handoff" | null;
+
+interface DownloadEvent {
+  state: "resuming" | "downloading" | "verifying" | "done" | "cancelled" | "error";
+  received?: number;
+  total?: number;
+  message?: string;
+  path?: string;
+}
+
+const MODEL_MB = 705;
+
+function mb(n: number): string {
+  return (n / (1024 * 1024)).toFixed(0);
+}
 
 const KEY_LABELS: Record<string, string> = {
   ctrl: "Strg",
@@ -52,6 +69,9 @@ export default function SettingsPanel({
   onMicChange,
   effectiveHandoffDir,
   onHandoffDirChange,
+  modelPresent,
+  engineReady,
+  engineModel,
 }: Props) {
   const [overlay, setOverlay] = useState(true);
   const [feedback, setFeedback] = useState(true);
@@ -60,6 +80,7 @@ export default function SettingsPanel({
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState<CaptureTarget>(null);
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
+  const [download, setDownload] = useState<DownloadEvent | null>(null);
 
   useEffect(() => {
     invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null }>(
@@ -105,6 +126,19 @@ export default function SettingsPanel({
     window.addEventListener("keydown", swallow, true);
     return () => window.removeEventListener("keydown", swallow, true);
   }, [capturing]);
+
+  // Modell-Download-Verlauf; einmaliges Abonnieren genügt.
+  useEffect(() => {
+    const un = listen<DownloadEvent>("pw://model-download", (e) => setDownload(e.payload));
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
+
+  function startDownload() {
+    setDownload({ state: "downloading", received: 0, total: MODEL_MB * 1024 * 1024 });
+    invoke("download_model").catch(console.error);
+  }
 
   async function applyHotkeys(captured: string) {
     if (!capturing) return;
@@ -203,6 +237,85 @@ export default function SettingsPanel({
     );
   }
 
+  function modelCard() {
+    const busy =
+      download?.state === "downloading" ||
+      download?.state === "resuming" ||
+      download?.state === "verifying";
+
+    let body: ReactNode;
+    if (busy) {
+      const received = download.received ?? 0;
+      const total = download.total ?? MODEL_MB * 1024 * 1024;
+      const pct = Math.min(100, (received / total) * 100);
+      body = (
+        <>
+          <div className="progress">
+            <span style={{ width: `${pct}%` }} />
+          </div>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="meta">
+              {download!.state === "verifying"
+                ? "Prüfsumme wird verifiziert…"
+                : `${mb(received)} / ${mb(total)} MB`}
+            </span>
+            {download!.state !== "verifying" && (
+              <button
+                className="btn"
+                onClick={() => invoke("cancel_model_download").catch(() => {})}
+              >
+                Abbrechen
+              </button>
+            )}
+          </div>
+        </>
+      );
+    } else if (download?.state === "error") {
+      body = (
+        <>
+          <p className="error">{download.message}</p>
+          <button className="btn primary" onClick={startDownload}>
+            Erneut versuchen
+          </button>
+        </>
+      );
+    } else if (download?.state === "cancelled") {
+      body = (
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span className="meta">Abgebrochen — Teilstand bleibt erhalten und wird fortgesetzt.</span>
+          <button className="btn primary" onClick={startDownload}>
+            Fortsetzen
+          </button>
+        </div>
+      );
+    } else if (modelPresent || download?.state === "done") {
+      body = engineReady ? (
+        <p className="meta">Modell vorhanden ✓ — Engine bereit ({engineModel}).</p>
+      ) : (
+        <p className="meta">Modell vorhanden ✓ — Engine wird geladen…</p>
+      );
+    } else {
+      body = (
+        <>
+          <p className="meta">
+            Sprachmodell (Parakeet TDT 0.6B v3, Q8) von HuggingFace laden — {MODEL_MB} MB,
+            mit SHA256-Verifikation, abbrechbar und fortsetzbar.
+          </p>
+          <button className="btn primary" onClick={startDownload}>
+            Modell herunterladen
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <section className="card" key="model">
+        <h2>Modell</h2>
+        {body}
+      </section>
+    );
+  }
+
   return (
     <div className="settings">
       <section className="card">
@@ -258,6 +371,8 @@ export default function SettingsPanel({
           (Bluetooth-Headsets müssen verbunden und als Eingabegerät aktiv sein).
         </p>
       </section>
+
+      {modelCard()}
 
       <section className="card">
         <h2>Anzeige, Sound &amp; Start</h2>
