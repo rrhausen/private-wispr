@@ -13,6 +13,33 @@ fn default_true() -> bool {
     true
 }
 
+/// Belegung der beiden PTT-Modi (handy-keys-String, z. B. "ctrl+alt+space").
+/// Frei konfigurierbar seit M1 (specs 4.3).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HotkeySettings {
+    #[serde(default = "default_cursor_hotkey")]
+    pub cursor: String,
+    #[serde(default = "default_handoff_hotkey")]
+    pub handoff: String,
+}
+
+fn default_cursor_hotkey() -> String {
+    "ctrl+alt+space".into()
+}
+
+fn default_handoff_hotkey() -> String {
+    "ctrl+alt+h".into()
+}
+
+impl Default for HotkeySettings {
+    fn default() -> Self {
+        HotkeySettings {
+            cursor: default_cursor_hotkey(),
+            handoff: default_handoff_hotkey(),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
     /// Name des gewählten Eingabegeräts; `None` = System-Standard.
@@ -24,6 +51,8 @@ pub struct Settings {
     /// Overlay-Pille anzeigen; default an.
     #[serde(default = "default_true")]
     pub overlay_enabled: bool,
+    #[serde(default)]
+    pub hotkeys: HotkeySettings,
 }
 
 impl Default for Settings {
@@ -32,6 +61,7 @@ impl Default for Settings {
             mic_device: None,
             handoff_dir: None,
             overlay_enabled: true,
+            hotkeys: HotkeySettings::default(),
         }
     }
 }

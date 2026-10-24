@@ -35,6 +35,10 @@ export default function App() {
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
   const [handoffDir, setHandoffDir] = useState("");
+  const [hotkeys, setHotkeys] = useState<StatusInfo["hotkeys"]>({
+    cursor: "ctrl+alt+space",
+    handoff: "ctrl+alt+h",
+  });
 
   useEffect(() => {
     invoke<StatusInfo>("status")
@@ -42,6 +46,7 @@ export default function App() {
         setStatus(s);
         setMic(s.mic);
         setHandoffDir(s.handoff_dir);
+        setHotkeys(s.hotkeys);
       })
       .catch(console.error);
     invoke<string[]>("list_devices")
@@ -138,6 +143,8 @@ export default function App() {
         </>
       ) : (
         <SettingsPanel
+          hotkeys={hotkeys}
+          onHotkeysChange={setHotkeys}
           mic={mic}
           devices={devices}
           onMicChange={chooseMic}

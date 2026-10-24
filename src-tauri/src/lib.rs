@@ -58,10 +58,11 @@ struct LastPayload {
 #[tauri::command]
 fn status(state: tauri::State<AppState>) -> serde_json::Value {
     let info = state.engine_info.lock().unwrap();
+    let (cursor_hotkey, handoff_hotkey) = hotkey::current();
     serde_json::json!({
         "hotkeys": {
-            "cursor": hotkey::CURSOR_HOTKEY,
-            "handoff": hotkey::HANDOFF_HOTKEY,
+            "cursor": cursor_hotkey,
+            "handoff": handoff_hotkey,
         },
         "mic": state.mic.lock().unwrap().clone(),
         "handoff_dir": handoff::dir().display().to_string(),
@@ -133,6 +134,29 @@ fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
+/// danach persistieren (bei Fehler bleibt die alte Belegung aktiv).
+#[tauri::command]
+fn set_hotkeys(cursor: String, handoff: String) -> Result<(), String> {
+    hotkey::set_hotkeys(&cursor, &handoff)?;
+    let mut settings = settings::load();
+    settings.hotkeys.cursor = cursor;
+    settings.hotkeys.handoff = handoff;
+    settings::save(&settings).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Key-Capture starten; das Ergebnis kommt asynchron via `pw://hotkey-captured`.
+#[tauri::command]
+fn capture_hotkey(app: AppHandle) {
+    hotkey::start_capture(app);
+}
+
+#[tauri::command]
+fn cancel_hotkey_capture() {
+    hotkey::cancel_capture();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -169,11 +193,7 @@ pub fn run() {
 
             hotkey::start(app.handle().clone())?;
             setup_tray(app)?;
-            info!(
-                "Private Wispr M0 gestartet (Cursor: {} halten · Hand-off: {} halten)",
-                hotkey::CURSOR_HOTKEY,
-                hotkey::HANDOFF_HOTKEY
-            );
+            info!("Private Wispr M1 gestartet (Hotkeys frei konfigurierbar in den Einstellungen)");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -182,7 +202,10 @@ pub fn run() {
             set_mic,
             get_settings,
             set_handoff_dir,
-            set_overlay_enabled
+            set_overlay_enabled,
+            set_hotkeys,
+            capture_hotkey,
+            cancel_hotkey_capture
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
