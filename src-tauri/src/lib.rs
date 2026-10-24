@@ -218,6 +218,18 @@ pub fn run() {
             info!("Private Wispr M1 gestartet (Hotkeys frei konfigurierbar in den Einstellungen)");
             Ok(())
         })
+        // X auf dem Hauptfenster versteckt es nur (App lebt im Tray weiter).
+        // Ohne diesen Handler würde das Fenster zerstört; das verborgene
+        // Overlay-Fenster hielte den Prozess am Leben und „Private Wispr
+        // öffnen" fände kein Fenster mehr vor.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             status,
             list_devices,
@@ -238,7 +250,8 @@ pub fn run() {
 
 /// Engine laden (beim Start und nach abgeschlossenem Modell-Download).
 pub(crate) fn load_engine(app: &AppHandle) {
-    match stt::Engine::load_default() {        Ok(engine) => {
+    match stt::Engine::load_default() {
+        Ok(engine) => {
             let mut info = engine.info().clone();
             info.loaded = true;
             info!(
@@ -274,6 +287,15 @@ fn emit_status(app: &AppHandle) {
     );
 }
 
+/// Hauptfenster in den Vordergrund bringen (Tray-Menü, Tray-Doppelklick).
+fn show_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
@@ -286,13 +308,13 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "show" => {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
-            }
+            "show" => show_main_window(app),
             _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
+                show_main_window(tray.app_handle());
+            }
         })
         .build(app)?;
     Ok(())
