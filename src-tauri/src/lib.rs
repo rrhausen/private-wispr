@@ -12,6 +12,7 @@ mod hotkey;
 mod paste;
 mod recording;
 pub mod selftest;
+mod settings;
 mod stt;
 
 use std::sync::{Arc, Mutex};
@@ -31,6 +32,8 @@ pub struct AppState {
     pub engine_info: Arc<Mutex<stt::EngineInfo>>,
     pub recording: Arc<Mutex<Option<recording::ActiveRecording>>>,
     pub last_dictation: Arc<Mutex<Option<stt::TranscriptResult>>>,
+    /// Gewähltes Eingabegerät (Name); `None` = System-Standard.
+    pub mic: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -54,6 +57,7 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
     let info = state.engine_info.lock().unwrap();
     serde_json::json!({
         "hotkey": DEFAULT_PTT_HOTKEY,
+        "mic": state.mic.lock().unwrap().clone(),
         "engine": {
             "ready": info.loaded,
             "model": info.model_name,
@@ -66,6 +70,33 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
     })
 }
 
+#[derive(Serialize)]
+struct MicDevice {
+    name: String,
+}
+
+#[tauri::command]
+fn list_devices() -> Result<Vec<MicDevice>, String> {
+    // Monitor-Quellen sind Lautsprecher-Ausgaben, keine Mikrofone.
+    let devices = handy_recorder::list_input_devices().map_err(|e| e.to_string())?;
+    Ok(devices
+        .into_iter()
+        .filter(|d| !d.is_monitor)
+        .map(|d| MicDevice { name: d.name })
+        .collect())
+}
+
+#[tauri::command]
+fn set_mic(app: AppHandle, state: tauri::State<AppState>, name: Option<String>) -> Result<(), String> {
+    *state.mic.lock().unwrap() = name.clone();
+    let mut settings = settings::load();
+    settings.mic_device = name;
+    settings::save(&settings).map_err(|e| e.to_string())?;
+    info!("Eingabegerät gesetzt: {:?}", state.mic.lock().unwrap());
+    emit_status(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -75,11 +106,13 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            let initial = settings::load();
             app.manage(AppState {
                 engine: Arc::new(Mutex::new(None)),
                 engine_info: Arc::new(Mutex::new(stt::EngineInfo::default())),
                 recording: Arc::new(Mutex::new(None)),
                 last_dictation: Arc::new(Mutex::new(None)),
+                mic: Arc::new(Mutex::new(initial.mic_device)),
             });
 
             // Engine im Hintergrund laden (Modell-Load dauert Sekunden).
@@ -91,7 +124,11 @@ pub fn run() {
             info!("Private Wispr M0 gestartet (PTT: {DEFAULT_PTT_HOTKEY} halten)");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![status])
+        .invoke_handler(tauri::generate_handler![
+            status,
+            list_devices,
+            set_mic
+        ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
 }
@@ -165,11 +202,12 @@ pub(crate) fn on_ptt_down(app: &AppHandle) {
     if !state.engine_info.lock().unwrap().loaded {
         return;
     }
+    let mic = state.mic.lock().unwrap().clone();
     let mut slot = state.recording.lock().unwrap();
     if slot.is_some() {
         return;
     }
-    match recording::start(app) {
+    match recording::start(app, mic) {
         Ok(active) => {
             *slot = Some(active);
             drop(slot);

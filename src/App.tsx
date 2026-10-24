@@ -1,10 +1,11 @@
-// Hauptfenster (M0): Status der Engine, PTT-Hinweis, letztes Diktat.
+// Hauptfenster (M0): Status der Engine, PTT-Hinweis, Mikrofonauswahl, letztes Diktat.
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 interface StatusInfo {
   hotkey: string;
+  mic: string | null;
   engine: {
     ready: boolean;
     model: string;
@@ -25,9 +26,17 @@ interface LastEvent {
 export default function App() {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [last, setLast] = useState<LastEvent | null>(null);
+  const [devices, setDevices] = useState<string[]>([]);
+  const [mic, setMic] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<StatusInfo>("status").then(setStatus).catch(console.error);
+    invoke<StatusInfo>("status").then((s) => {
+      setStatus(s);
+      setMic(s.mic);
+    }).catch(console.error);
+    invoke<string[]>("list_devices")
+      .then((names) => setDevices(names))
+      .catch(console.error);
     const un1 = listen<StatusInfo["engine"]>("pw://status", (e) => {
       setStatus((prev) => (prev ? { ...prev, engine: e.payload } : prev));
     });
@@ -37,6 +46,11 @@ export default function App() {
       void un2.then((f) => f());
     };
   }, []);
+
+  function chooseMic(name: string | null) {
+    setMic(name);
+    invoke("set_mic", { name }).catch(console.error);
+  }
 
   const engine = status?.engine;
 
@@ -62,6 +76,24 @@ export default function App() {
             Pfad: <code>{engine.model_path}</code>
           </p>
         )}
+      </section>
+
+      <section className="card">
+        <h2>Mikrofon</h2>
+        <select
+          className="mic-select"
+          value={mic ?? ""}
+          onChange={(e) => chooseMic(e.target.value === "" ? null : e.target.value)}
+        >
+          <option value="">System-Standard</option>
+          {devices.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <p className="meta">
+          Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen
+          (Bluetooth-Headsets müssen verbunden und als Eingabegerät aktiv sein).
+        </p>
       </section>
 
       <section className="card hint">

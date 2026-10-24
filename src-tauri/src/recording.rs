@@ -82,9 +82,9 @@ fn rms_level(frame: &[f32]) -> f32 {
     (sum / frame.len() as f32).sqrt().min(1.0)
 }
 
-fn open_recorder() -> Result<Recorder<SpoolSink>> {
+fn open_recorder(device: Option<String>) -> Result<Recorder<SpoolSink>> {
     let config = RecorderConfig {
-        device: None,
+        device,
         channels: Channels::MixToMono,
         frames_per_chunk: None,
         ..RecorderConfig::speech()
@@ -121,8 +121,24 @@ fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
 }
 
 /// Mikrofon öffnen und Aufnahme starten (on-demand wie Handy; Warm-State M1).
-pub fn start(app: &AppHandle) -> Result<ActiveRecording> {
-    let recorder = open_recorder()?;
+/// `device`: gewählter Geräte-Name oder `None` für den System-Standard. Ist das
+/// gewählte Gerät nicht (mehr) vorhanden, fällt die Aufnahme auf den
+/// System-Standard zurück statt still zu scheitern (Meldung im Log).
+pub fn start(app: &AppHandle, device: Option<String>) -> Result<ActiveRecording> {
+    let (recorder, used_fallback) = match open_recorder(device.clone()) {
+        Ok(recorder) => (recorder, false),
+        Err(e) if device.is_some() => {
+            warn!(
+                "Gerät '{:?}' nicht öffnenbar ({e:#}); falle auf System-Standard zurück",
+                device
+            );
+            (open_recorder(None)?, true)
+        }
+        Err(e) => return Err(e),
+    };
+    if used_fallback {
+        let _ = app.emit("pw://mic-fallback", ());
+    }
     let sink = make_sink(Some(app.clone()))?;
     let started = Instant::now();
     recorder
