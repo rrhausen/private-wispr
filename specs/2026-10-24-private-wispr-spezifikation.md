@@ -1,6 +1,6 @@
 # Private Wispr — Spezifikation v0.1
 
-**Status:** Final aus dem Grilling-Interview (Runden 1–3 + Nachtrag), 24.10.2026 — alle Fragen entschieden (Q7 siehe 5.1)
+**Status:** Final aus dem Grilling-Interview (Runden 1–3 + Nachtrag), 24.10.2026 — alle Fragen entschieden (Q7 siehe 5.1) · **Ratifiziert** (Freigabe 24.10.2026 mit drei Anpassungen: Ziele Wartbarkeit/Agentic Engineering · Brain-Dump ≥ 10 min in 4.2 · frei konfigurierbare Hotkeys in 4.3)
 **Repo/Codename:** `private-wispr` · Anzeigename: **„Private Wispr"** (Arbeitsname)
 
 ---
@@ -23,6 +23,8 @@ Private Wispr ist eine **private, deutsch-first Diktat- und Transkriptions-App f
 - **Wörterbuch v1:** deterministische Phrasen-Regeln + Aliase (Unicode-sicher) + Fachwörter direkt ins Modell (vocabulary / initial_prompt)
 - **Historie:** SQLite mit Rohtranskript, Endtext, angewandten Regeln (Nachvollziehbarkeit); Audio standardmäßig löschen
 - **Qualitäts-Gurt:** deutsches Testkorpus + Eval-Harness (WER, Fachbegriff-Trefferquote, schädliche Fehlersetzungen, Latenz) — als CI-Wächter **und** aktives Vergleichswerkzeug für Modell-/Regel-Tuning
+- **Wartbarkeit & leichte Weiterentwicklung:** kleine, klar getrennte Module (Audio · Engine · Regeln · Modi · Paste · UI) mit typsicheren Schnittstellen (tauri-specta-Bindings), Architektur-Doku lebt im Repo mit
+- **Professionelles Agentic Coding Engineering:** das Repo ist von Anfang an so gebaut, dass AI-Coding-Agenten sicher und effizient daran arbeiten können — `AGENTS.md`/`CLAUDE.md` mit Architektur-Führer, Konventionen und „so teste ich eine Änderung"-Anleitung; Tests + Eval-Harness als Verifikations-Loop für jeden Agenten-Run; CI (lint + test + eval); kleine, reviewbare Änderungseinheiten und konventionelle Commit-Messages
 - Installation: NSIS-Installer + portable ZIP; kein Auto-Update; Autostart optional
 
 ### Nicht-Ziele (v1, teils v2+)
@@ -80,13 +82,15 @@ Private Wispr ist eine **private, deutsch-first Diktat- und Transkriptions-App f
 - Aufnahme über WASAPI (16 kHz mono float); **Mikrofonauswahl** in den Einstellungen, Fallback System-Default; Gerätewechsel/-Recovery robust behandeln.
 - **Silero-VAD** (GGUF via transcribe.cpp) mit Smoothing (Onset/Hangover) für Aufnahme-Ende-Erkennung und „keine Sprache erkannt"-Erkennung; Mindestdauer-Schwelle gegen Fehlauslösungen (Blitztext: < 0,3 s verwerfen) + Halluzinations-Filter (Whisper-Typ-Credits).
 - **Chunking für lange Aufnahmen** an Sprechpausen (Ziel ~30 s, Max 40 s, Min 5 s — Handys bewährte Parameter) mit nahtloser Transkript-Naht und Sprachkonsistenz über Chunks.
+- **Brain-Dump-Sessions (Anforderung: ≥ 10 Minuten am Stück):** Die gehaltene PTT-Aufnahme hat **keine Zeitbegrenzung** — Audio wird von Anfang an **kontinuierlich auf Festplatte gespoolt** (konstanter RAM-Verbrauch, crash-sicherer WAV-Header wie beim Meeting-Recorder in M3), Verarbeitung läuft chunk-weise: bei Streaming-Modellen live mit Partials, sonst direkt nach dem Loslassen über das Pausen-Chunking. Explizit **keine hartkodierten Timeouts oder stillen Abbrüche** (Fehlerbild Whispering: Diktat endete nach ~30 s mit Fehlermeldung). Overlay und Historie bleiben bei 10-Minuten-Sessions stabil. Das Eval-Korpus enthält mindestens einen ≥10-Minuten-Clip als Regressionstest.
 - Optionale WAV-Archivierung pro Aufnahme (default aus; Historie-Regel).
 - System-Mute während der Aufnahme optional (IAudioEndpointVolume), restore-sicher.
 
 ### 4.3 Hotkeys & Interaktion
 
 - **Push-to-Talk als Default** (Taste halten = Aufnahme, loslassen = transkribieren + einfügen), Modi „Toggle" und „Hold-or-Toggle" wählbar; Modifier-only-Hotkeys (z. B. nur Strg) möglich.
-- Implementierung: Low-Level-Keyboard-Hook mit **key-up-Erkennung** (Vorlage: `handy-keys`-Crate bzw. OpenWhisprs `windows-key-listener.c`-Muster); pro Modus ein Hotkey, Konflikt-Erkennung.
+- Implementierung: Low-Level-Keyboard-Hook mit **key-up-Erkennung** (Vorlage: `handy-keys`-Crate bzw. OpenWhisprs `windows-key-listener.c`-Muster).
+- **Alle Hotkeys frei konfigurierbar (wie Whispering):** pro Modus und Funktion (PTT, Abbrechen) beliebige Kombinationen inkl. Modifier-only-Tasten; **Key-Capture-Dialog** („Taste drücken …"), bereits belegte Kombinationen werden erkannt und mit klarer Meldung abgelehnt oder bewusst umgezogen; sinnvolle Defaults sind vorbelegt, ein funktionierender Custom-Hotkey ersetzt den Default des Modus.
 - **Escape bricht jede laufende Aufnahme ab** (global gefangen während der Aufnahme).
 
 ### 4.4 Modi-System (Q1)
@@ -228,3 +232,4 @@ Eigenen Code: **MIT**, `NOTICE.md` listet Übernahmen mit Urhebern. (Privates Re
 | Q6 | Engine | transcribe.cpp eingebunden, Vulkan; `SttEngine`-Trait hält CUDA-Sidecar-Tür offen |
 | Q7 | Modell-Defaults | Schnell: **Parakeet-TDT-0.6B-v3** (PTT, dauerhaft geladen) · Präzise: **Voxtral Small 24B** Q4 (Batch/lange Aufnahmen) · Fallback: Whisper large-v3-turbo |
 | Q8 | WisprFlow | Keine weitere Vertiefung (Stub analysed; App = 332-MB-Blackbox) |
+| Nachtrag | Freigabe | Ratifiziert mit 3 Anpassungen: Ziele +Wartbarkeit/Agentic Engineering · 4.2 Brain-Dump ≥ 10 min (Disk-Spooling, keine Timeouts, Eval-Regressionstest) · 4.3 Hotkeys frei konfigurierbar (Key-Capture, Konfliktbehandlung) |
