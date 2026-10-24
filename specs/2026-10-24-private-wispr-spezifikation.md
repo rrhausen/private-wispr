@@ -129,7 +129,7 @@ terms:
 
 ### 4.6 Einfügen am Cursor (Auto-Paste)
 
-- **Paste-Transaktion nach Handys Muster** (`paste_tx/windows.rs`, MIT, wird mit Attribution übernommen): Delayed-Render-Clipboard (`SetClipboardData(NULL)` + Message-Window) — das `WM_RENDERFORMAT` der Ziel-App ist die **Lesebestätigung**; danach Clipboard-Restore aus Vollformat-Snapshot (inkl. Bitmaps), Guard via `GetClipboardSequenceNumber`; Opt-out-Marker gegen Clipboard-History/Cloud-Sync.
+- **Paste-Transaktion nach dem Muster von Handys `paste_tx`** (Eigenimplementierung, keine Code-Übernahme — IP-Direktive, siehe 7): Delayed-Render-Clipboard (`SetClipboardData(NULL)` + Message-Window) — das `WM_RENDERFORMAT` der Ziel-App ist die **Lesebestätigung**; danach Clipboard-Restore aus Vollformat-Snapshot (inkl. Bitmaps), Guard via `GetClipboardSequenceNumber`; Opt-out-Marker gegen Clipboard-History/Cloud-Sync.
 - Paste-Chord wählbar (Ctrl+V / Ctrl+Shift+V / Shift+Insert) mit **Terminal-Erkennung**; bekanntes Limit: erhöhte (Admin-)Fenster → Fallback „in Zwischenablage kopiert" mit klarer Meldung.
 - **Fokus-Sicherheit:** Ziel-HWND bei Aufnahmebeginn merken; ist beim Einfügen ein anderes Fenster vorne → Text in Zwischenablage statt ins falsche Feld (Blitztext-Konzept).
 - **Text-Fitting (regelbasiert, kein LLM, aus Blitztext):** Leerzeichen an Nahtstellen, Groß-/Kleinschreibung am Satzanfang, Funktionswörter klein mitten im Satz (deutsche Liste), Schluss-Punkt entfernen wenn der Satz danach weiterschreibt.
@@ -199,14 +199,18 @@ Kuratiertes JSON-Katalog-Subset (Handy-Konzept): Modell-ID, Familie, Größe, VR
 
 ## 7. Wiederverwendung & Lizenzen
 
+**IP-Direktive (24.10.2026, nach Ratifizierung):** Kein Code 1:1 aus
+Drittprojekten übernehmen (auch MIT nicht) — Konzepte studieren, selbst
+implementieren. Crates/npm-Pakete als Abhängigkeiten sind zulässige Verwendung.
+
 | Baustein | Quelle | Lizenz | Verwendung |
 |---|---|---|---|
-| `paste_tx/windows.rs` (Paste-Transaktion) | cjpais/Handy | MIT | Übernahme mit Attribution |
-| `handy-keys`, `handy-recorder` (Hotkeys/Audio) | cjpais (Crates) | MIT | Dependency oder Fork |
-| engine_supervisor-, catalog-, chunking-Muster | cjpais/Handy | MIT | Blaupause |
+| Paste-Transaktion, Worker-Supervisor, Chunking, Katalog | cjpais/Handy | MIT | Konzept-Blaupause → **Eigenimplementierung** |
+| `handy-keys`, `handy-recorder` (Hotkeys/Audio) | cjpais | MIT | Abhängigkeit (zulässig) |
 | Wörterbuch-Budgets, Sidecar-Rezepte, Auto-Lerner-Idee | OpenWhispr/openwhispr | MIT | Blaupause |
 | Prompt-Querschnittsregeln, Text-Fitting, Fokus-Check | cmagnussen/blitztext-app | MIT | Konzept-Übernahme |
-| transcribe.cpp + Bindings | Mozilla AI | MIT | Engine |
+| Mikrofon-Handling (BT700) | Epicenter/Whispering lokal | AGPL | **nur Verhaltensanalyse** |
+| transcribe.cpp + Bindings | Mozilla AI | MIT | Engine (Abhängigkeit) |
 
 Eigenen Code: **MIT**, `NOTICE.md` listet Übernahmen mit Urhebern. (Privates Repo — saubere Attribution trotzdem, falls je veröffentlicht.)
 

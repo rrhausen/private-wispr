@@ -61,6 +61,16 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 
 ## Konventionen
 
+- **IP-Direktive (vom Nutzer, 24.10.2026): KEIN 1:1-Code von Drittprojekten
+  übernehmen — auch nicht aus MIT-lizenzierten Repos.** Wir studieren Konzepte,
+  Verhalten und Architektur (Handy, OpenWhispr, Blitztext, Epicenter/Whispering)
+  und schreiben jede Implementierung selbst. Reverse-Engineering dient nur dem
+  Verständnis von Verhalten und Mustern, niemals der Code-Reproduktion.
+  Zulässig: normale Abhängigkeits-Nutzung von Crates/npm-Paketen (handy-keys,
+  handy-recorder, transcribe-cpp etc.) gemäß deren Lizenz, denn das ist
+  Verwendung, nicht Übernahme. Verboten: Quelltext-Kopien, auch auszugsweise
+  oder mit Umbenennung.
+
 - **Sprache:** UI-Texte und User-facing Strings auf Deutsch; Code-Bezeichner
   und Kommentare auf Englisch ok, deutsche Kommentare für fachliche
   Begründungen willkommen (siehe Bestand).
