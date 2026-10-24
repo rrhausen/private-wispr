@@ -17,19 +17,29 @@ Vulkan), Tauri 2 (Rust + React/TS). Deutsch zuerst, Englisch second.
 ```
 src-tauri/src/
   lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
-  hotkey.rs     Globaler PTT-Hotkey (handy-keys, Low-Level-Hook, key-up)
+  hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up) — frei
+                konfigurierbar (M1): Key-Capture, Konflikt-Validierung,
+                Umregistrierung zur Laufzeit mit Rollback
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit)
   stt.rs        Engine: transcribe.cpp (Parakeet TDT v3 Q8, Backend::Auto→Vulkan)
+  model_download.rs  In-App-Modell-Download (ureq, Progress-Events, SHA256,
+                abbrechbar, Resume via Range-Requests)
   paste.rs      Einfügen (M0: Clipboard + SendInput Strg+V)
+  feedback.rs   Dezenter Klick beim Aufnahme-Start (WAV-Synthese + PlaySoundW;
+                abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
+  handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
+  settings.rs   JSON-Settings (Felder mit Defaults statt Migration)
   selftest.rs   Headless-Modus `--selftest [wav]` (Eval-Keimzelle)
-src/            Frontend: main.tsx→App.tsx (Dashboard), overlay.tsx (Pille)
+src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen),
+                settings.tsx (Hotkeys, Ablageort, Mikrofon, Overlay, Sound,
+                Autostart, Modell-Download), overlay.tsx (Pille)
 ```
 
 **Datenfluss:** Hotkey Pressed → `recording::start` → Overlay „recording" →
 Released → `recording::stop` → Thread: `stt::transcribe` → `paste::paste_text`
 → Overlay „done". Events: `pw://status`, `pw://overlay`, `pw://level`,
-`pw://last`.
+`pw://last`, `pw://mic-fallback`, `pw://hotkey-captured`, `pw://model-download`.
 
 ## Wie baue und teste ich
 
@@ -91,8 +101,8 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 1. **Engine läuft in-process** — Worker-Prozess-Isolation (Handy-Muster
    `engine_supervisor`) ist M1-Pflicht, bevor Features auf die Engine gehen.
 2. **Paste ist einfach** (kein Clipboard-Restore, keine Terminal-Erkennung,
-   kein Delayed-Render) — M1: Port von Handys `paste_tx/windows.rs` (MIT,
-   Attribution in NOTICE.md pflegen).
+   kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
+   nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).
 3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
 4. **Wörterbuch existiert noch nicht** — M1: YAML-Regeln + Unicode-Normalisierung
    + Profile (specs 4.5); Fuzzy/Phonetik erst v2 (Kölner Phonetik, NICHT
