@@ -11,8 +11,9 @@ models/
 resources/bin/
 bin/
 
-# Audio / Stimmdaten nicht ins Repo (Privatsphäre-Default; Ground-Truth-Texte bleiben versioniert)
-eval/audio/
+# Audio / Stimmdaten nicht ins Repo (Privatsphäre-Default); Ground-Truth-Texte (*.txt) bleiben versioniert
+eval/audio/*
+!eval/audio/*.txt
 *.wav
 *.m4a
 *.opus

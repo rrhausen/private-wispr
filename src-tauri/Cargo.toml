@@ -1,0 +1,53 @@
+[package]
+name = "private-wispr"
+version = "0.1.0"
+description = "Private Wispr — deutsch-first Diktat-App für Windows"
+authors = ["rrhausen"]
+edition = "2021"
+license = "MIT"
+default-run = "private-wispr"
+
+[lib]
+name = "private_wispr_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-log = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+once_cell = "1"
+hound = "3.5"
+enigo = "0.6.1"
+arboard = "3"
+dirs = "5"
+sha2 = "0.10"
+handy-keys = "0.3.4"
+handy-recorder = "0.1"
+# Engine-Kern; plattformspezifische Backend-Features siehe target-Tabellen
+# (Cargo unifiziert Features über alle Tabellen hinweg).
+transcribe-cpp = { version = "0.4.1", default-features = false, features = ["serde"] }
+
+# Windows x64: GPU via Vulkan, CPU-Module ladbar zur Laufzeit (Handy-Posture).
+[target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
+transcribe-cpp = { version = "0.4.1", default-features = false, features = [
+  "dynamic-backends",
+  "vulkan",
+] }
+
+# Hinweis: Handys tao-Patch (Windows-Shutdown-Fix, Handy #1710) ist hier nicht
+# nötig — Tauri 2.12 zieht bereits tao 0.37 mit dem Upstream-Fix.
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true

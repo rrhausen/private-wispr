@@ -1,0 +1,171 @@
+/* Dashboard (Hauptfenster) */
+:root {
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  color: #e8e8ee;
+  background: transparent;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(160deg, #17171f 0%, #1d1d29 100%);
+  min-height: 100vh;
+}
+
+.dashboard {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b9a7ff;
+  background: rgba(122, 92, 255, 0.15);
+  border: 1px solid rgba(122, 92, 255, 0.4);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6b6b7d;
+  flex: none;
+}
+
+.dot[data-on="true"] {
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+}
+
+.hint strong {
+  font-family: "Cascadia Code", Consolas, monospace;
+  color: #b9a7ff;
+}
+
+.error {
+  margin: 10px 0 0;
+  color: #ff9d9d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: #a0a0b4;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+blockquote {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(122, 92, 255, 0.08);
+  border-left: 3px solid #7a5cff;
+  border-radius: 6px;
+  font-size: 15px;
+  white-space: pre-wrap;
+}
+
+.meta {
+  color: #8a8a9c;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+footer.meta {
+  text-align: center;
+  margin-top: auto;
+}
+
+code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* ── Overlay-Pille (overlay.html) ─────────────────────────────── */
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px auto 0;
+  width: fit-content;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: rgba(24, 22, 36, 0.92);
+  border: 1px solid rgba(150, 120, 255, 0.45);
+  box-shadow: 0 8px 32px rgba(90, 60, 200, 0.35);
+  backdrop-filter: blur(8px);
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  color: #ece8ff;
+  user-select: none;
+}
+
+.pill .mic {
+  font-size: 18px;
+}
+
+.pill .label {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 64px;
+}
+
+.pill .bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+}
+
+.pill .bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #9b7bff;
+  transition: height 90ms ease-out;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(155, 123, 255, 0.25);
+  border-top-color: #9b7bff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

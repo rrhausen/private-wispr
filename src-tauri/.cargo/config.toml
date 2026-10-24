@@ -1,0 +1,5 @@
+# Build-Umgebung für transcribe-cpp-sys (Vulkan-Backend).
+# VULKAN_SDK liegt zusätzlich im Benutzer-PATH (siehe AGENTS.md); diese Datei
+# macht den Build unabhängig von der Shell, in der cargo gestartet wird.
+[env]
+VULKAN_SDK = "C:\\VulkanSDK\\1.4.363.0"

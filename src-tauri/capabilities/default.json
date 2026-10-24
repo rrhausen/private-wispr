@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Rechte für Hauptfenster und Overlay (Events lesen, Status abrufen)",
+  "windows": ["main", "overlay"],
+  "permissions": [
+    "core:default"
+  ]
+}
