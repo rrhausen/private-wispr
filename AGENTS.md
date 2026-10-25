@@ -76,7 +76,8 @@ bun run tauri dev
 # Headless-Smoke-Test (Engine + Modell-Load, ohne GUI):
 target/debug/private-wispr.exe --selftest
 
-# Vollständiger Transkriptions-Test mit WAV (16 kHz mono):
+# Vollständiger Transkriptions-Test mit Audio (16 kHz mono direkt; M4A/MP3/
+# OPUS/WAV anderer Rate via ffmpeg — PATH oder PW_FFMPEG, Eval-Clips s. u.):
 target/debug/private-wispr.exe --selftest path/to/test.wav
 
 # Frontend-Build
