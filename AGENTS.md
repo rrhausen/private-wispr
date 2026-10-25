@@ -23,25 +23,43 @@ src-tauri/src/
                 konfigurierbar (M1): Key-Capture, Konflikt-Validierung,
                 Umregistrierung zur Laufzeit mit Rollback
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
-                Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit)
+                Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
+                WAV wird nach Transkription default gelöscht (specs 4.8)
   stt.rs        Engine: transcribe.cpp (Parakeet TDT v3 Q8, Backend::Auto→Vulkan)
+                — transcribe() nimmt vocabulary-Feed aus dem Wörterbuch
+  dictionary.rs Wörterbuch-Pipeline (specs 4.5): YAML-Regeln+Aliase+Profile
+                in %APPDATA%\PrivateWispr\dictionary\, NFC, Filler-Entfernung,
+                längste Phrase zuerst, \p{L}-Wortgrenzen, Komposita-Toleranz
+  fitting.rs    Text-Fitting (specs 4.6): Abstände, Satzanfang, Funktions-
+                wörter klein, Nahtstellen + Schluss-Punkt via SeamContext
+  focus.rs      Fokus-Check (specs 4.6): Ziel-HWND+Prozess bei Aufnahmebeginn
+                merken; Fokuswechsel → Zwischenablage statt falschem Feld
+  history.rs    Historie (specs 4.8): SQLite in %APPDATA%\PrivateWispr\,
+                raw/final/applied_rules+Version, Retention (default 90 d)
   model_download.rs  In-App-Modell-Download (ureq, Progress-Events, SHA256,
                 abbrechbar, Resume via Range-Requests)
-  paste.rs      Einfügen (M0: Clipboard + SendInput Strg+V)
+  paste.rs      Einfügen (M0: Clipboard + SendInput Strg+V; copy_to_clipboard
+                für Fokus-Wechsel-Fallback)
   feedback.rs   Dezenter Klick beim Aufnahme-Start (WAV-Synthese + PlaySoundW;
                 abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
   handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
   settings.rs   JSON-Settings (Felder mit Defaults statt Migration)
-  selftest.rs   Headless-Modus `--selftest [wav]` (Eval-Keimzelle)
-src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen),
-                settings.tsx (Hotkeys, Ablageort, Mikrofon, Overlay, Sound,
-                Autostart, Modell-Download), overlay.tsx (Pille)
+  selftest.rs   Headless-Modus `--selftest [wav]` (Eval-Keimzelle; misst
+                Wörterbuch+Fitting mit: raw/final/applied_rules)
+src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
+                Übersicht: Letzte Diktate-Liste aus der Historie),
+                settings.tsx (Hotkeys, Ablageort, Mikrofon, Wörterbuch-
+                profile, Overlay, Sound, Autostart, Modell-Download),
+                overlay.tsx (Pille)
 ```
 
-**Datenfluss:** Hotkey Pressed → `recording::start` → Overlay „recording" →
-Released → `recording::stop` → Thread: `stt::transcribe` → `paste::paste_text`
-→ Overlay „done". Events: `pw://status`, `pw://overlay`, `pw://level`,
-`pw://last`, `pw://mic-fallback`, `pw://hotkey-captured`, `pw://model-download`.
+**Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →
+Overlay „recording" → Released → `recording::stop` → Thread:
+`stt::transcribe` (vocabulary) → `dictionary::apply` → `fitting::fit` →
+`paste::paste_text` (Fokus-Check) bzw. `handoff::append` →
+`history::insert` → Overlay „done". Events: `pw://status`, `pw://overlay`,
+`pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hotkey-captured`,
+`pw://model-download`, `pw://history-changed`.
 
 ## Wie baue und teste ich
 
@@ -106,10 +124,9 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
    kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
    nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).
 3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
-4. **Wörterbuch existiert noch nicht** — M1: YAML-Regeln + Unicode-Normalisierung
-   + Profile (specs 4.5); Fuzzy/Phonetik erst v2 (Kölner Phonetik, NICHT
-   ASCII-Soundex — Handys Fuzzy ist für Deutsch ungeeignet).
-5. **Historie** noch nicht implementiert (M1, SQLite-Schema in specs 4.8).
+4. **Wörterbuch** ✅ Sprint 2 (`dictionary.rs`); Fuzzy/Phonetik bleibt v2
+   (Kölner Phonetik, NICHT ASCII-Soundex — Handys Fuzzy ist für Deutsch ungeeignet).
+5. **Historie** ✅ Sprint 2 (`history.rs`, SQLite inkl. applied_rules).
 
 ## Eval (specs Abschnitt 6)
 

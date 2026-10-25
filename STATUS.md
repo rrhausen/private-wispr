@@ -4,7 +4,7 @@
 Pflege-Konvention (auch in AGENTS.md): Am Ende jedes Sprints diese Datei
 aktualisieren, einen Git-Tag `m<Meilenstein>-sprint<n>` setzen und pushen.
 
-Stand: **2026-10-25** · Head `2cc17e4` (= origin/main) · Tags: `m0`, `m1-sprint1`
+Stand: **2026-10-25** · Head `4274fcf` (= origin/main) · Tags: `m0`, `m1-sprint1`, `m1-sprint2`
 
 Legende: ✅ fertig & verifiziert · 🔄 in Arbeit · ⏳ geplant, nicht begonnen ·
 „GUI offen" = muss der Nutzer selbst testen (Mikrofon + Ohren), siehe jeweilige
@@ -15,7 +15,7 @@ Session-Handoff-Datei in `hand-off/` (lokal, nicht im Repo).
 | Meilenstein | Inhalt | Status |
 |---|---|---|
 | **M0 — Walking Skeleton** | E2E-Diktat, Vulkan-Engine, Overlay, Paste, Hand-off-Modus | ✅ fertig 24.10.2026 (Tag `m0`) |
-| **M1 — Produktkern** | Bedienbarkeit · Qualität/Nachvollziehbarkeit · Ausgabe-Stabilität | 🔄 Sprint 1 von 3 fertig |
+| **M1 — Produktkern** | Bedienbarkeit · Qualität/Nachvollziehbarkeit · Ausgabe-Stabilität | 🔄 Sprint 1+2 von 3 fertig |
 | **M2 — Modi & Cloud** | Bereinigt-Modus (LLM), Prompt-Editor, OpenAI-kompat. Client | ⏳ |
 | **M3 — Lange Formate** | Datei-Import, lange Live-Aufnahmen, Zusammenfassungen | ⏳ |
 | v2-Backlog | Fuzzy (Kölner Phonetik), Auto-Lernen, Diarization, elevated Helper | ⏳ |
@@ -43,16 +43,31 @@ Warmhalts durch Nutzer offen.
 **Offen von Sprint 1:** GUI-Verifizierung durch Nutzer (4 Punkte in
 `hand-off/SESSION-HANDOFF-2026-10-25.md`); Laptop-Installation.
 
-### M1 Sprint 2 — Qualität & Nachvollziehbarkeit ⏳ nicht begonnen
+### M1 Sprint 2 — Qualität & Nachvollziehbarkeit ✅ implementiert (25.10.2026, Tag `m1-sprint2`)
 
-Nächster Auftrag laut Handoff 25.10.; Reihenfolge = Spec-Reihenfolge.
+Alle vier Features implementiert; 49 Unit-Tests grün, `--selftest` ok
+(Vulkan, voller Pfad inkl. Wörterbuch-Anlage). GUI-Verifizierung durch
+Nutzer offen (s. u.).
 
-| Feature | Spec | Betroffene Module |
-|---|---|---|
-| Wörterbuch-Pipeline (YAML-Regeln, Aliase, Profile, vocabulary-Feed) | 4.5 | neu `dictionary.rs`, `stt.rs` |
-| Text-Fitting (Nahtstellen, Groß-/Klein, Schluss-Punkt) | 4.6 | neu `textfit.rs` |
-| Fokus-Check (Ziel-HWND merken, Fokuswechsel → Clipboard) | 4.6 | `recording.rs`, `paste.rs`, `lib.rs` |
-| Historie (SQLite inkl. applied_rules, Audio default löschen) | 4.8 | neu `history.rs`, Dashboard-UI |
+| Feature | Umsetzung | Headless | Nutzer-GUI |
+|---|---|---|---|
+| Wörterbuch-Pipeline (YAML, Aliase, Profile, NFC, Filler, Wortgrenzen, vocabulary-Feed) | `f082c36` | ✅ 15 Tests | offen |
+| Text-Fitting (Abstände, Funktionswörter klein, Sie bleibt groß, Naht-/Schluss-Punkt-Regeln) | `61406da` | ✅ 8 Tests | offen |
+| Fokus-Check (HWND+Prozess merken, Fokuswechsel → Zwischenablage + Meldung) | `abb2b60` | ✅ 1 Test + Build | offen (Fokuswechsel beim Sprechen provozieren) |
+| Historie (SQLite, applied_rules+Version, target_app, Retention 90 d, Audio default löschen, Dashboard-Liste) | `4274fcf` | ✅ 3 Tests (In-Memory) | offen |
+
+**Entwurfsentscheidungen Sprint 2** (Details in Modul-Köpfen):
+- Kanone matcht case-insensitiv sich selbst → Fachwort-Kasuschreibung wird
+  erzwungen, Treffer zählen als Fachbegriff-Quote-Daten (specs 6).
+- `SeamContext` (Zeichen am Cursor) ist implementiert + getestet, läuft
+  bis Sprint 3 mit `none()` — Erstwort-Großschreibung nur bei bekanntem
+  Satzende links (Parakeet kasusiert selbst).
+- Historie liegt laut Spec in `%APPDATA%` (Roaming); Modelle/settings.json
+  historisch in `%LOCALAPPDATA%` — dokumentiert in dictionary.rs/history.rs.
+- Wörterbuch-Ladefehler blockieren das Diktat nicht (leeres Wörterbuch,
+  Fehler im Log) — Datei ist vom Nutzer editierbar.
+- Spool-WAV: Löschung nach Transkription; bei Transkriptionsfehler bleibt
+  es (Pfad geloggt) für Retry/Fehlersuche.
 
 ### M1 Sprint 3 — Ausgabe-Stabilität ⏳ geplant
 
@@ -67,5 +82,11 @@ Nächster Auftrag laut Handoff 25.10.; Reihenfolge = Spec-Reihenfolge.
 
 - **Eval-Clips** (10–20, eigene Stimme, inkl. ≥10-Min-Brain-Dump +
   Fachbegriffssätze) → `eval/audio/` + `.txt` — Voraussetzung für
-  WER-/Fachbegriff-Metriken (Sprint 2); ohne echte Fehler keine guten Regeln.
+  WER-/Fachbegriff-Metriken; die exemplarischen Wörterbuch-Regeln sind
+  Platzhalter bis echte ASR-Fehler als Regelfälle vorliegen.
 - GUI-Verifizierung Sprint 1 (siehe oben).
+- GUI-Verifizierung Sprint 2: Wörterbuch-Karte (Profile umschalten, YAML
+  im Editor ändern → wirkt ab nächstem Diktat), Fachwort diktieren (z. B.
+  „Share Point"), Filler („ähm") weg, Funktionswörter klein, Fokuswechsel
+  während Aufnahme → Zwischenablage-Meldung, Historie-Liste füllt sich,
+  Klick kopiert, ✕/Alles löschen, `history.db` prüfen.
