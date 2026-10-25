@@ -27,7 +27,7 @@ Session-Handoff-Datei in `hand-off/` (lokal, nicht im Repo).
 | Feature | Umsetzung | Headless | Nutzer-GUI |
 |---|---|---|---|
 | Einstellungen: Hand-off-Ablageort, Overlay abschaltbar, Autostart | `f541b46` | ✅ Tests | GUI offen |
-| Hotkeys frei konfigurierbar (Capture, Konflikt-Prüfung, Persistenz) | `eceed78` | ✅ 8 Tests | GUI offen |
+| Hotkeys frei konfigurierbar (Capture, Konflikt-Prüfung, Persistenz) | `eceed78` | ✅ 9 Tests | Capture-Fix `435ce30` (25.10.: seitenspezifische Modifier wurden roh gespeichert) per E2E am UI verifiziert; Nutzer-GUI offen |
 | Feedback-Klick beim Aufnahme-Start (PlaySound; rodio ❌ cpal-Konflikt) | `04efb61` | ✅ Tests | GUI offen |
 | Modell-Download in der App (Progress, SHA256, Resume) | `61077fa` | ✅ 3 Tests | GUI offen |
 | UI-Redesign (Blitztext-Prinzipien; CSS-Einbindung war kaputt) | `a035d1b` | ✅ Browser | GUI offen |
