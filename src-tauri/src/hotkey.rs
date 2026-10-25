@@ -1,16 +1,24 @@
 //! Globale Push-to-Talk-Hotkeys über handy-keys (Low-Level-Hook, key-up-fähig).
 //!
 //! M1: Hotkeys sind frei konfigurierbar (specs 4.3, Whispering-Stil). Die
-//! Belegung kommt aus den Settings; `set_hotkeys` registriert zur Laufzeit neu
-//! (mit Rollback auf die alte Belegung, wenn eine Kombination nicht
-//! registrierbar ist) und der Key-Capture (`start_capture`) liefert über einen
-//! eigenen nicht-blockenden Listener die gedrückte Kombination als String.
+//! Belegung kommt aus den Settings und wird zur Laufzeit umgehängt.
+//!
+//! Es gibt genau EINEN KeyboardListener, erstellt beim App-Start, und dessen
+//! Event-Loop bedient beides: die PTT-Kanten der registrierten Hotkeys und den
+//! Key-Capture (als Zustandsautomat, nicht als zweiter Hook). Ein früherer
+//! Entwurf erstellte pro Capture einen zweiten Listener — der war in manchen
+//! Umgebungen stumm (Bug 25.10.), während der beim Start erstellte Hook in
+//! allen Instanzen zuverlässig lieferte. Die Kanten-Logik ist hier
+//! eigenständig implementiert (reine Funktionen, unit-getestet); handy-keys
+//! liefert nur die Roh-Events und das Blockieren registrierter Kombinationen
+//! gegenüber anderen Apps.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use handy_keys::{Hotkey, HotkeyId, HotkeyManager, HotkeyState, Key, KeyboardListener, Modifiers};
+use handy_keys::{BlockingHotkeys, Hotkey, Key, KeyboardListener, KeyEvent, Modifiers};
 use log::{error, info, warn};
 use tauri::{AppHandle, Emitter};
 
@@ -20,77 +28,163 @@ use crate::OutputMode;
 pub const DEFAULT_CURSOR_HOTKEY: &str = "ctrl+alt+space";
 pub const DEFAULT_HANDOFF_HOTKEY: &str = "ctrl+alt+h";
 
-/// Der Manager gehört dem Hotkey-Thread, ist aber über `&self` von
-/// `set_hotkeys` aus neu konfigurierbar. mpsc-Receiver ist nicht Sync, daher
-/// liegt der Manager im Mutex. Lock-Reihenfolge im ganzen Modul: erst
-/// MANAGER, dann ACTIVE (verhindert Deadlocks).
-static MANAGER: OnceLock<Mutex<HotkeyManager>> = OnceLock::new();
-static ACTIVE: Mutex<Vec<(HotkeyId, OutputMode)>> = Mutex::new(Vec::new());
+/// `set_hotkeys` aus abfragbar. mpsc-Receiver ist nicht Sync, daher im Mutex.
+/// Blockier-Satz des Listeners: registrierte PTT-Kombinationen frisst der
+/// Hook, damit sie in anderen Apps keine Shortcuts auslösen.
+static BLOCKING: OnceLock<BlockingHotkeys> = OnceLock::new();
 
-/// Key-Capture läuft höchstens einmal gleichzeitig; Abbruch über ein Flag.
-static CAPTURE_RUNNING: AtomicBool = AtomicBool::new(false);
+/// Aktive PTT-Belegung und gedrückt-Zustand je Modus. Lock-Reihenfolge:
+/// erst PRESSED, dann ACTIVE (verhindert Deadlocks).
+static ACTIVE: Mutex<Vec<(Hotkey, OutputMode)>> = Mutex::new(Vec::new());
+static PRESSED: Mutex<Vec<OutputMode>> = Mutex::new(Vec::new());
+
+/// Abbruch-Flag für den laufenden Capture (setzt der UI-Command).
 static CAPTURE_CANCEL: AtomicBool = AtomicBool::new(false);
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Laufender Key-Capture mit dem Zeitpunkt, an dem er abläuft.
+struct ActiveCapture {
+    app: AppHandle,
+    deadline: Instant,
+    eval: CaptureEval,
+}
+static CAPTURE: Mutex<Option<ActiveCapture>> = Mutex::new(None);
 
 pub fn start(app: AppHandle) -> anyhow::Result<()> {
     let settings = crate::settings::load();
     let cursor = settings.hotkeys.cursor.clone();
     let handoff = settings.hotkeys.handoff.clone();
 
+    let blocking: BlockingHotkeys = Arc::new(Mutex::new(HashSet::new()));
+    if BLOCKING.set(blocking).is_err() {
+        error!("Blockier-Satz bereits initialisiert");
+        return Ok(());
+    }
+
+    if let Err(msg) = set_hotkeys(&cursor, &handoff) {
+        error!("Hotkey-Belegung aus Settings fehlgeschlagen: {msg}");
+        // Reset-Versuch auf die Defaults, damit die App bedienbar bleibt.
+        if set_hotkeys(DEFAULT_CURSOR_HOTKEY, DEFAULT_HANDOFF_HOTKEY).is_ok() {
+            warn!("Auf Default-Hotkeys zurückgefallen ({DEFAULT_CURSOR_HOTKEY}, {DEFAULT_HANDOFF_HOTKEY})");
+        }
+    }
+    info!(
+        "PTT-Hotkeys aktiv: {cursor} → Cursor · {handoff} → Hand-off (halten zum Diktieren)"
+    );
+
     std::thread::Builder::new()
         .name("pw-hotkey".into())
         .spawn(move || {
-            let manager = match HotkeyManager::new_with_blocking() {
-                Ok(m) => m,
-                Err(e) => {
-                    error!("HotkeyManager fehlgeschlagen: {e}");
-                    return;
-                }
-            };
-            if MANAGER.set(Mutex::new(manager)).is_err() {
-                error!("HotkeyManager bereits initialisiert");
-                return;
-            }
-
-            if let Err(msg) = set_hotkeys(&cursor, &handoff) {
-                error!("Hotkey-Registrierung fehlgeschlagen: {msg} — Diktat reagiert nicht");
-                // Reset-Versuch auf die Defaults, damit die App bedienbar bleibt.
-                if set_hotkeys(DEFAULT_CURSOR_HOTKEY, DEFAULT_HANDOFF_HOTKEY).is_ok() {
-                    warn!("Auf Default-Hotkeys zurückgefallen ({DEFAULT_CURSOR_HOTKEY}, {DEFAULT_HANDOFF_HOTKEY})");
-                }
-                return;
-            }
-            info!(
-                "PTT-Hotkeys aktiv: {cursor} → Cursor · {handoff} → Hand-off (halten zum Diktieren)"
-            );
+            // Der Hook-Thread kann in manchen Prozess-Kontexten bei der
+            // Installation sterben (Bug 25.10.: taube Instanzen aus dem
+            // VS-Code-Terminal). Drei Gegenmaßnahmen: Kanal-Trennung erkennen
+            // und Listener neu installieren, Selbsttest per F24-Injektion,
+            // und lautes Loggen statt stiller Taubheit.
+            let blocking = BLOCKING.get().expect("BLOCKING ist gesetzt").clone();
+            let mut listener: Option<KeyboardListener> = None;
+            let mut listener_since = Instant::now();
+            let mut reconnect_wait_until = Instant::now();
+            let mut saw_any_event = false;
+            let mut probe_sent_at: Option<Instant> = None;
+            let mut failure_reported = false;
 
             loop {
-                // Events unter dem Lock einsammeln, PTT-Handling danach außerhalb:
-                // on_ptt_down kann beim Bluetooth-Retry ~600 ms dauern und würde
-                // sonst set_hotkeys blockieren.
-                let mut events: Vec<(OutputMode, HotkeyState)> = Vec::new();
-                if let Some(m) = MANAGER.get() {
-                    let manager = m.lock().unwrap();
-                    while let Some(event) = manager.try_recv() {
-                        let mode = ACTIVE
-                            .lock()
-                            .unwrap()
-                            .iter()
-                            .find(|(id, _)| *id == event.id)
-                            .map(|(_, mode)| *mode);
-                        if let Some(mode) = mode {
-                            events.push((mode, event.state));
+                capture_tick();
+
+                // Empfangen (10-ms-Takt) und Kanten verarbeiten.
+                if let Some(l) = listener.as_ref() {
+                    let mut died = false;
+                    loop {
+                        match l.recv_timeout(Duration::from_millis(10)) {
+                            Ok(ev) => {
+                                if !saw_any_event {
+                                    saw_any_event = true;
+                                    if probe_sent_at.is_some() {
+                                        info!("Hook-Selbsttest bestanden (eigenes F24-Ereignis gesehen)");
+                                    }
+                                }
+                                handle_event(&app, &ev);
+                            }
+                            Err(handy_keys::Error::Timeout) => break,
+                            Err(_) => {
+                                // Kanal getrennt: Hook-Thread wurde beendet.
+                                died = true;
+                                break;
+                            }
+                        }
+                    }
+                    if died {
+                        if !failure_reported {
+                            error!(
+                                "Tastatur-Hook-Thread wurde beendet — Hook-Installation ist in \
+                                 diesem Prozess-Kontext fehlgeschlagen. Neuinstallation alle 2 s; \
+                                 falls das bestehen bleibt, App aus anderem Kontext starten \
+                                 (normales Terminal/Explorer statt Terminal-Integration der IDE)."
+                            );
+                            failure_reported = true;
+                        }
+                        listener = None;
+                        reconnect_wait_until = Instant::now() + Duration::from_secs(2);
+                    }
+                }
+
+                // Listener (erneut) installieren.
+                if listener.is_none() && Instant::now() >= reconnect_wait_until {
+                    match KeyboardListener::new_with_blocking(blocking.clone()) {
+                        Ok(l) => {
+                            if failure_reported {
+                                info!("Tastatur-Hook neu installiert — Selbsttest folgt");
+                            }
+                            listener = Some(l);
+                            listener_since = Instant::now();
+                            saw_any_event = false;
+                            probe_sent_at = None;
+                        }
+                        Err(e) => {
+                            if !failure_reported {
+                                error!("KeyboardListener fehlgeschlagen: {e} — Diktat reagiert nicht");
+                                failure_reported = true;
+                            }
+                            reconnect_wait_until = Instant::now() + Duration::from_secs(2);
                         }
                     }
                 }
-                for (mode, state) in events {
-                    if state == HotkeyState::Pressed {
-                        crate::on_ptt_down(&app, mode);
-                    } else {
-                        crate::on_ptt_up(&app);
+
+                // Selbsttest: Hat der Hook nach 2 s noch nie ein Ereignis
+                // gesehen, eine harmlose F24 injizieren (praktisch nirgends
+                // belegt) und prüfen, ob sie den eigenen Hook erreicht.
+                // Während des Captures auslassen, damit sie nicht als neue
+                // Kombination landet.
+                if listener.is_some()
+                    && !saw_any_event
+                    && probe_sent_at.is_none()
+                    && listener_since.elapsed() >= Duration::from_secs(2)
+                {
+                    if CAPTURE.lock().unwrap().is_none() {
+                        send_self_probe();
+                        probe_sent_at = Some(Instant::now());
                     }
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                if let Some(at) = probe_sent_at {
+                    if !saw_any_event && at.elapsed() >= Duration::from_millis(800) {
+                        warn!(
+                            "Hook-Selbsttest FEHLGESCHLAGEN: das eigene F24-Ereignis wurde nicht \
+                             gesehen. Entweder ist der Hook in diesem Prozess tot (Diktat und \
+                             Hotkey-Änderung funktionieren dann nicht — App aus anderem Kontext \
+                             starten, z. B. normales Terminal statt IDE-Terminal), oder ein \
+                             elevated Fenster im Vordergrund blockt nur den Test (UIPI)."
+                        );
+                        probe_sent_at = None;
+                        listener = None; // Neuinstallation erzwingen
+                        reconnect_wait_until = Instant::now() + Duration::from_secs(2);
+                    }
+                }
+
+                if listener.is_none() {
+                    std::thread::sleep(Duration::from_millis(100));
+                } else {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
             }
         })
         .map(|_| ())
@@ -98,21 +192,41 @@ pub fn start(app: AppHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Aktuell aktive Belegung (aus der Registrierung, nicht aus den Settings —
-/// bei Registrierungsfehlern bleibt die alte Belegung aktiv).
-pub fn current() -> (String, String) {
-    let Some(m) = MANAGER.get() else {
-        return (DEFAULT_CURSOR_HOTKEY.into(), DEFAULT_HANDOFF_HOTKEY.into());
+/// Harmloses F24 (down+up) injizieren — der Hook-Selbsttest muss es sehen.
+fn send_self_probe() {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY, VK_F24,
     };
-    let manager = m.lock().unwrap();
+    fn ev(vk: VIRTUAL_KEY, up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+    let seq = [ev(VK_F24, false), ev(VK_F24, true)];
+    unsafe {
+        SendInput(&seq, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+/// Aktuell aktive Belegung (aus der Registrierung, nicht aus den Settings).
+pub fn current() -> (String, String) {
+    let active = ACTIVE.lock().unwrap();
     let mut cursor = None;
     let mut handoff = None;
-    for (id, mode) in ACTIVE.lock().unwrap().iter() {
-        if let Some(hotkey) = manager.get_hotkey(*id) {
-            match mode {
-                OutputMode::Cursor => cursor = Some(hotkey.to_handy_string()),
-                OutputMode::Handoff => handoff = Some(hotkey.to_handy_string()),
-            }
+    for (hotkey, mode) in active.iter() {
+        match mode {
+            OutputMode::Cursor => cursor = Some(hotkey.to_handy_string()),
+            OutputMode::Handoff => handoff = Some(hotkey.to_handy_string()),
         }
     }
     (
@@ -121,8 +235,10 @@ pub fn current() -> (String, String) {
     )
 }
 
-/// Beide PTT-Hotkeys validieren und atomar umregistrieren. Bei Fehler bleibt
-/// die bisherige Belegung aktiv und die Meldung erklärt den Grund.
+/// Beide PTT-Hotkeys validieren und atomar umhängen. Die Registrierung ist
+/// reine Datenpflege (Kanten-Logik sieht die neue Belegung im nächsten Event)
+/// und kann nicht mehr teilweise scheitern — ein Rollback wie beim alten
+/// Manager entfällt.
 pub fn set_hotkeys(cursor: &str, handoff: &str) -> Result<(), String> {
     let cursor_hotkey = validate(cursor)?;
     let handoff_hotkey = validate(handoff)?;
@@ -133,53 +249,29 @@ pub fn set_hotkeys(cursor: &str, handoff: &str) -> Result<(), String> {
         ));
     }
 
-    let manager = MANAGER
+    let blocking = BLOCKING
         .get()
-        .ok_or_else(|| "Hotkey-System noch nicht bereit".to_string())?
-        .lock()
-        .unwrap();
+        .ok_or_else(|| "Hotkey-System noch nicht bereit".to_string())?;
 
     let mut active = ACTIVE.lock().unwrap();
-    let old: Vec<(HotkeyId, OutputMode)> = active.clone();
-    for (id, _) in &old {
-        let _ = manager.unregister(*id);
+    let mut set = blocking.lock().unwrap();
+    for (old, _) in active.iter() {
+        set.remove(old);
     }
-
-    let new = [(cursor_hotkey, OutputMode::Cursor), (handoff_hotkey, OutputMode::Handoff)];
-    let mut registered: Vec<(HotkeyId, OutputMode)> = Vec::new();
-    for (hotkey, mode) in new {
-        match manager.register(hotkey) {
-            Ok(id) => registered.push((id, mode)),
-            Err(e) => {
-                // Rollback: teilweise registrierte wieder entfernen, alte Belegung zurück.
-                for (id, _) in &registered {
-                    let _ = manager.unregister(*id);
-                }
-                for (id, mode) in &old {
-                    let hotkey = manager
-                        .get_hotkey(*id)
-                        .expect("alte Hotkey-ID muss auflösbar sein");
-                    match manager.register(hotkey) {
-                        Ok(rid) => registered.push((rid, *mode)),
-                        Err(e2) => error!("Rollback-Registrierung fehlgeschlagen: {e2}"),
-                    }
-                }
-                *active = registered;
-                return Err(format!(
-                    "„{}“ konnte nicht registriert werden: {e}",
-                    hotkey.to_handy_string()
-                ));
-            }
-        }
+    *active = vec![
+        (cursor_hotkey, OutputMode::Cursor),
+        (handoff_hotkey, OutputMode::Handoff),
+    ];
+    for (new, _) in active.iter() {
+        set.insert(*new);
     }
-    *active = registered;
     info!("Hotkeys umgestellt: {cursor} → Cursor · {handoff} → Hand-off");
     Ok(())
 }
 
 /// Eine Kombination prüfen: parsebar, kein Escape (Reserve für Abbruch), und
 /// ohne Modifier nur mit F-Taste — nackte Buchstaben/Zahlen würden systemweit
-/// blockt und machen damit andere Apps unbedienbar.
+/// blockiert und machen damit andere Apps unbedienbar.
 fn validate(hotkey_str: &str) -> Result<Hotkey, String> {
     let hotkey: Hotkey = hotkey_str
         .parse()
@@ -206,9 +298,232 @@ fn is_function_key(display: &str) -> bool {
         && display[1..].chars().all(|c| c.is_ascii_digit())
 }
 
+/// Ein Key-Event verarbeiten: Diagnose-Log während des Captures, Capture-
+/// Bewertung, PTT-Kanten (Down/Up je Modus).
+fn handle_event(app: &AppHandle, ev: &KeyEvent) {
+    if CAPTURE.lock().unwrap().is_some() {
+        info!(
+            "[Diagnose] {} key={:?} mods={:?}",
+            if ev.is_key_down { "key_down" } else { "key_up" },
+            ev.key,
+            ev.modifiers
+        );
+    }
+
+    let mut done: Option<Option<String>> = None;
+    {
+        let mut cap = CAPTURE.lock().unwrap();
+        if let Some(run) = cap.as_mut() {
+            if let Some(result) = capture_eval(&mut run.eval, ev) {
+                done = Some(result);
+            }
+        }
+    }
+    if let Some(result) = done {
+        finish_capture(result);
+    }
+
+    let edges = {
+        let mut pressed = PRESSED.lock().unwrap();
+        ptt_edges(&ACTIVE.lock().unwrap(), &mut pressed, ev)
+    };
+    for (mode, down) in edges {
+        if down {
+            crate::on_ptt_down(app, mode);
+        } else {
+            crate::on_ptt_up(app);
+        }
+    }
+}
+
+/// Capture-Ablauf/Abbruch unabhängig von Events prüfen (Timeout).
+fn capture_tick() {
+    let expired = {
+        let cap = CAPTURE.lock().unwrap();
+        match cap.as_ref() {
+            Some(run) => CAPTURE_CANCEL.load(Ordering::SeqCst) || Instant::now() >= run.deadline,
+            None => false,
+        }
+    };
+    if expired {
+        if CAPTURE_CANCEL.load(Ordering::SeqCst) {
+            info!("Key-Capture: Abbruch-Befehl (UI)");
+        } else {
+            info!("Key-Capture: 15 s Timeout ohne Taste");
+        }
+        finish_capture(None);
+    }
+}
+
+/// Laufenden Capture beenden und das Ergebnis an die UI emittieren (null bei
+/// Abbruch/Timeout). Tut nichts, wenn kein Capture läuft.
+fn finish_capture(result: Option<String>) {
+    let run = CAPTURE.lock().unwrap().take();
+    let Some(run) = run else { return };
+    CAPTURE_CANCEL.store(false, Ordering::SeqCst);
+    if let Some(hotkey) = &result {
+        info!("Key-Capture: {hotkey}");
+    } else {
+        info!("Key-Capture abgebrochen (Escape/Timeout/Abbruch-Befehl)");
+    }
+    let _ = run
+        .app
+        .emit("pw://hotkey-captured", serde_json::json!({ "hotkey": result }));
+}
+
+/// PTT-Kanten aus einem Roh-Event ableiten (Eigenimplementierung nach dem
+/// Manager-Muster): Down bei passendem key_down, wenn noch nicht gedrückt;
+/// Up beim key_up derselben Taste oder wenn ein Modifier-Event die
+/// Kombination nicht mehr abbildet (z. B. Strg losgelassen). Liefert
+/// (Modus, gedrückt?)-Wechsel in Belegungsreihenfolge.
+fn ptt_edges(
+    active: &[(Hotkey, OutputMode)],
+    pressed: &mut Vec<OutputMode>,
+    ev: &KeyEvent,
+) -> Vec<(OutputMode, bool)> {
+    let mut edges = Vec::new();
+    for (hotkey, mode) in active {
+        let matches = hotkey.modifiers.matches(ev.modifiers) && hotkey.key == ev.key;
+        let is_down = pressed.contains(mode);
+        if ev.is_key_down {
+            if matches && !is_down {
+                pressed.push(*mode);
+                edges.push((*mode, true));
+            }
+        } else {
+            let releases = (ev.key.is_some() && hotkey.key == ev.key)
+                || (ev.key.is_none() && !hotkey.modifiers.matches(ev.modifiers));
+            if is_down && releases {
+                pressed.retain(|m| m != mode);
+                edges.push((*mode, false));
+            }
+        }
+    }
+    edges
+}
+
+/// Zustand eines laufenden Captures.
+struct CaptureEval {
+    seen_modifiers: Modifiers,
+    saw_key: bool,
+}
+
+impl CaptureEval {
+    fn new() -> Self {
+        Self {
+            seen_modifiers: Modifiers::empty(),
+            saw_key: false,
+        }
+    }
+}
+
+/// Ein Event im laufenden Capture bewerten; `Some(ergebnis)` beendet ihn
+/// (Ergebnis null = Abbruch). Zwei Fälle: Ein Nicht-Modifier-Key beendet mit
+/// der Kombination aus gehaltenen Modifiern + Taste; nur Modifier gedrückt und
+/// wieder losgelassen ergeben eine Modifier-only-Kombination (dafür werden
+/// die Modifier über alle key_down-Events akkumuliert, weil beim Loslassen
+/// der erste schon fehlt).
+fn capture_eval(st: &mut CaptureEval, ev: &KeyEvent) -> Option<Option<String>> {
+    if !ev.is_key_down {
+        if !st.saw_key && !st.seen_modifiers.is_empty() {
+            return Some(
+                Hotkey::new(generalize_modifiers(st.seen_modifiers), None)
+                    .ok()
+                    .map(|h| h.to_handy_string()),
+            );
+        }
+        return None;
+    }
+    if let Some(key) = ev.key {
+        if key == Key::Escape {
+            return Some(None);
+        }
+        st.saw_key = true;
+        if let Ok(hotkey) = Hotkey::new(generalize_modifiers(ev.modifiers), key) {
+            return Some(Some(hotkey.to_handy_string()));
+        }
+        return None;
+    }
+    st.seen_modifiers |= ev.modifiers;
+    None
+}
+
+/// Seitenspezifische Modifier (Strg links, Alt rechts, …) auf die Compound-
+/// Aliase zusammenziehen. Der Capture sieht je nach Tastatur immer nur die
+/// konkrete Seite; gespeichert werden soll aber „ctrl" (matched beide Seiten,
+/// wie die Defaults) — sonst würde z. B. rechte Strg beim Diktieren ins Leere
+/// laufen, und das Label zeigte „ctrl_left+alt_left+m".
+fn generalize_modifiers(m: Modifiers) -> Modifiers {
+    let mut out = Modifiers::empty();
+    for (left, right, compound) in [
+        (Modifiers::CMD_LEFT, Modifiers::CMD_RIGHT, Modifiers::CMD),
+        (
+            Modifiers::SHIFT_LEFT,
+            Modifiers::SHIFT_RIGHT,
+            Modifiers::SHIFT,
+        ),
+        (Modifiers::CTRL_LEFT, Modifiers::CTRL_RIGHT, Modifiers::CTRL),
+        (Modifiers::OPT_LEFT, Modifiers::OPT_RIGHT, Modifiers::OPT),
+    ] {
+        if m.intersects(left | right) {
+            out |= compound;
+        }
+    }
+    if m.contains(Modifiers::FN) {
+        out |= Modifiers::FN;
+    }
+    out
+}
+
+/// Key-Capture starten (asynchron): Ergebnis via Event `pw://hotkey-captured`,
+/// Payload `{ "hotkey": "<kombination>" }` oder `null` bei Abbruch/Timeout.
+/// Escape bricht ab (specs 4.3). Läuft schon ein Capture, wird der Aufruf
+/// ignoriert.
+pub fn start_capture(app: AppHandle) {
+    let mut cap = CAPTURE.lock().unwrap();
+    if cap.is_some() {
+        return;
+    }
+    CAPTURE_CANCEL.store(false, Ordering::SeqCst);
+    *cap = Some(ActiveCapture {
+        app,
+        deadline: Instant::now() + CAPTURE_TIMEOUT,
+        eval: CaptureEval::new(),
+    });
+    drop(cap);
+    info!("Key-Capture gestartet — warte auf Taste (Esc bricht ab, 15 s Timeout)");
+}
+
+/// Laufenden Capture abbrechen.
+pub fn cancel_capture() {
+    CAPTURE_CANCEL.store(true, Ordering::SeqCst);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ev_down(mods: Modifiers, key: Option<Key>) -> KeyEvent {
+        KeyEvent {
+            modifiers: mods,
+            key,
+            is_key_down: true,
+            changed_modifier: None,
+        }
+    }
+
+    fn ev_up(mods: Modifiers, key: Option<Key>) -> KeyEvent {
+        KeyEvent {
+            modifiers: mods,
+            key,
+            is_key_down: false,
+            changed_modifier: None,
+        }
+    }
+
+    fn active_single(hotkey: &str, mode: OutputMode) -> Vec<(Hotkey, OutputMode)> {
+        vec![(hotkey.parse().unwrap(), mode)]
+    }
 
     /// Repro für den Capture-Bug vom 25.10.: Der Key-Capture sieht von
     /// handy-keys stets seitenspezifische Modifier (CtrlLeft/OptLeft …). Der
@@ -217,18 +532,15 @@ mod tests {
     /// Seite und das Label zeigte den Rohstring.
     #[test]
     fn capture_normalisiert_seiten_modifikatoren() {
-        let hotkey = Hotkey::new(
-            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT),
-            Some(Key::M),
-        )
-        .unwrap();
-        assert_eq!(hotkey.to_handy_string(), "ctrl+alt+m");
-
-        // Roundtrip: Der String muss wieder parsebar sein und danach BEIDE
-        // Seiten matchen (wie die Defaults „ctrl+alt+space").
-        let round: Hotkey = hotkey.to_handy_string().parse().unwrap();
-        assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT));
-        assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
+        let mut st = CaptureEval::new();
+        // Modifer-Events (key=None) akkumulieren, dann Taste:
+        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
+        assert_eq!(
+            capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, None)),
+            None
+        );
+        let result = capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::M)));
+        assert_eq!(result, Some(Some("ctrl+alt+m".into())));
     }
 
     #[test]
@@ -248,17 +560,117 @@ mod tests {
     /// muss ebenfalls compound normalisiert werden.
     #[test]
     fn capture_modifier_only_wird_compound() {
-        let hotkey = Hotkey::new(
-            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT),
-            None,
-        )
-        .unwrap();
-        assert_eq!(hotkey.to_handy_string(), "ctrl+alt");
-        // Als Muster „ctrl+alt" muss das gemischte Seiten-Event (links Strg,
-        // rechts Alt) genauso matchen wie die Reinform rechts+rechts.
-        let round: Hotkey = hotkey.to_handy_string().parse().unwrap();
+        let mut st = CaptureEval::new();
+        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
+        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT, None)), None);
+        let result = capture_eval(&mut st, &ev_up(Modifiers::CTRL_LEFT, None));
+        assert_eq!(result, Some(Some("ctrl+alt".into())));
+
+        // Als Muster „ctrl+alt" muss das gemischte Seiten-Event genauso
+        // matchen wie die Reinform rechts+rechts.
+        let round: Hotkey = "ctrl+alt".parse().unwrap();
         assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT));
         assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
+    }
+
+    /// Ein key_up ohne vorherige Modifier (z. B. Rest einer Taste, die vor dem
+    /// Capture-Start gedrückt wurde) darf den Capture nicht beenden.
+    #[test]
+    fn capture_ignoriert_fremdes_key_up() {
+        let mut st = CaptureEval::new();
+        assert_eq!(capture_eval(&mut st, &ev_up(Modifiers::empty(), Some(Key::F12))), None);
+        // Und danach geht es normal weiter:
+        assert_eq!(
+            capture_eval(&mut st, &ev_down(Modifiers::empty(), Some(Key::F9))),
+            Some(Some("f9".into()))
+        );
+    }
+
+    #[test]
+    fn capture_escape_bricht_ab() {
+        let mut st = CaptureEval::new();
+        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::empty(), Some(Key::Escape))), Some(None));
+    }
+
+    /// PTT: Down bei passendem key_down, Up beim key_up derselben Taste.
+    #[test]
+    fn ptt_kanten_down_up() {
+        let active = active_single("ctrl+alt+space", OutputMode::Cursor);
+        let mut pressed = Vec::new();
+
+        // Nicht passend: nur Alt gedrückt.
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::OPT_LEFT, None)).is_empty());
+        // Strg dazu — immer noch nicht passend (Leertaste fehlt).
+        assert!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, None))
+                .is_empty()
+        );
+        // Leertaste: Down-Kante.
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::Space))),
+            vec![(OutputMode::Cursor, true)]
+        );
+        // Auto-Repeat (weiteres down): keine zweite Kante.
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::Space))).is_empty());
+        // Leertaste loslassen: Up-Kante.
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_up(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::Space))),
+            vec![(OutputMode::Cursor, false)]
+        );
+    }
+
+    /// PTT: Modifier-only-Hotkey (z. B. nur Strg+Alt) feuert beim vollständigen
+    /// Halten und wird freigegeben, sobald ein Modifier losgelassen wird.
+    #[test]
+    fn ptt_modifier_only_hotkey() {
+        let active = active_single("ctrl+alt", OutputMode::Cursor);
+        let mut pressed = Vec::new();
+
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_RIGHT, None)).is_empty());
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT, None)),
+            vec![(OutputMode::Cursor, true)]
+        );
+        // Ein regulärer Tastendruck während des Haltens ändert nichts.
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT, Some(Key::M))).is_empty());
+        // Alt loslassen: Kombination nicht mehr komplett → Up-Kante.
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_up(Modifiers::CTRL_RIGHT, None)),
+            vec![(OutputMode::Cursor, false)]
+        );
+    }
+
+    /// PTT: Wird Strg während einer gehaltenen Kombination losgelassen, muss
+    /// die Up-Kante kommen (sonst „klemmt" die Aufnahme).
+    #[test]
+    fn ptt_release_bei_verlorenem_modifier() {
+        let active = active_single("ctrl+alt+space", OutputMode::Cursor);
+        let mut pressed = vec![OutputMode::Cursor];
+
+        let edges = ptt_edges(
+            &active,
+            &mut pressed,
+            &ev_up(Modifiers::OPT_LEFT, None), // Strg-up: Kombination zerfällt
+        );
+        assert_eq!(edges, vec![(OutputMode::Cursor, false)]);
+        assert!(pressed.is_empty());
+    }
+
+    /// Zwei Modi gleichzeitig gedrückt: jede Kante separat.
+    #[test]
+    fn ptt_zwei_hotkeys_unabhängig() {
+        let active = vec![
+            ("ctrl+alt+space".parse().unwrap(), OutputMode::Cursor),
+            ("ctrl+alt+h".parse().unwrap(), OutputMode::Handoff),
+        ];
+        let mut pressed = Vec::new();
+
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, None)).is_empty());
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::H))),
+            vec![(OutputMode::Handoff, true)]
+        );
+        assert!(pressed == vec![OutputMode::Handoff]);
     }
 
     #[test]
@@ -308,116 +720,4 @@ mod tests {
             assert_eq!(hotkey.to_handy_string(), round.to_handy_string());
         }
     }
-}
-
-/// Key-Capture starten (asynchron): Ergebnis via Event `pw://hotkey-captured`,
-/// Payload `{ "hotkey": "<kombination>" }` oder `null` bei Abbruch/Timeout.
-/// Escape bricht ab (specs 4.3). Läuft schon ein Capture, wird der Aufruf
-/// ignoriert.
-pub fn start_capture(app: AppHandle) {
-    if CAPTURE_RUNNING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    CAPTURE_CANCEL.store(false, Ordering::SeqCst);
-    std::thread::Builder::new()
-        .name("pw-hotkey-capture".into())
-        .spawn(move || {
-            let result = capture_once();
-            CAPTURE_RUNNING.store(false, Ordering::SeqCst);
-            if let Some(hotkey) = &result {
-                info!("Key-Capture: {hotkey}");
-            } else {
-                info!("Key-Capture abgebrochen (Escape/Timeout/Abbruch-Befehl)");
-            }
-            let _ = app.emit(
-                "pw://hotkey-captured",
-                serde_json::json!({ "hotkey": result }),
-            );
-        })
-        .map_err(|e| {
-            error!("Capture-Thread konnte nicht gestartet werden: {e}");
-            CAPTURE_RUNNING.store(false, Ordering::SeqCst);
-            e
-        })
-        .ok();
-}
-
-/// Laufenden Capture abbrechen.
-pub fn cancel_capture() {
-    CAPTURE_CANCEL.store(true, Ordering::SeqCst);
-}
-
-/// Auf eine sinnvolle Kombination warten. Zwei Fälle:
-/// 1. Ein Nicht-Modifier-Key wird gedrückt → Kombination aus den aktuell
-///    gehaltenen Modifiern + Taste.
-/// 2. Nur Modifier werden gedrückt und wieder losgelassen → Modifier-only-
-///    Kombination (z. B. nur Strg+Alt). Dafür akkumulieren wir die Modifier
-///    über alle key_down-Events, weil beim Loslassen der erste schon fehlt.
-fn capture_once() -> Option<String> {
-    let listener = match KeyboardListener::new() {
-        Ok(l) => l,
-        Err(e) => {
-            error!("Capture-Listener fehlgeschlagen: {e}");
-            return None;
-        }
-    };
-
-    let deadline = Instant::now() + CAPTURE_TIMEOUT;
-    let mut seen_modifiers = Modifiers::empty();
-    let mut saw_key = false;
-
-    loop {
-        if CAPTURE_CANCEL.load(Ordering::SeqCst) || Instant::now() >= deadline {
-            return None;
-        }
-        match listener.recv_timeout(Duration::from_millis(100)) {
-            Ok(event) if !event.is_key_down => {
-                // Modifier-only: Modifier losgelassen, ohne dass eine echte
-                // Taste dazwischen lag → die akkumulierten Modifier sind der
-                // Hotkey.
-                if !saw_key && !seen_modifiers.is_empty() {
-                    return Hotkey::new(generalize_modifiers(seen_modifiers), None)
-                        .ok()
-                        .map(|h| h.to_handy_string());
-                }
-            }
-            Ok(event) => {
-                if let Some(key) = event.key {
-                    if key == Key::Escape {
-                        return None;
-                    }
-                    saw_key = true;
-                    if let Ok(hotkey) = Hotkey::new(generalize_modifiers(event.modifiers), key) {
-                        return Some(hotkey.to_handy_string());
-                    }
-                } else {
-                    seen_modifiers |= event.modifiers;
-                }
-            }
-            Err(_) => continue, // kurz vor Deadline — Schleifenkopf beendet rechtzeitig
-        }
-    }
-}
-
-/// Seitenspezifische Modifier (Strg links, Alt rechts, …) auf die Compound-
-/// Aliase zusammenziehen. Der Capture sieht je nach Tastatur immer nur die
-/// konkrete Seite; gespeichert werden soll aber „ctrl" (matched beide Seiten,
-/// wie die Defaults) — sonst würde z. B. rechte Strg beim Diktieren ins Leere
-/// laufen, und das Label zeigte „ctrl_left+alt_left+m".
-fn generalize_modifiers(m: Modifiers) -> Modifiers {
-    let mut out = Modifiers::empty();
-    for (left, right, compound) in [
-        (Modifiers::CMD_LEFT, Modifiers::CMD_RIGHT, Modifiers::CMD),
-        (Modifiers::SHIFT_LEFT, Modifiers::SHIFT_RIGHT, Modifiers::SHIFT),
-        (Modifiers::CTRL_LEFT, Modifiers::CTRL_RIGHT, Modifiers::CTRL),
-        (Modifiers::OPT_LEFT, Modifiers::OPT_RIGHT, Modifiers::OPT),
-    ] {
-        if m.intersects(left | right) {
-            out |= compound;
-        }
-    }
-    if m.contains(Modifiers::FN) {
-        out |= Modifiers::FN;
-    }
-    out
 }
