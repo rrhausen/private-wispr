@@ -32,3 +32,6 @@ desktop.ini
 .DS_Store
 .idea/
 .vscode/
+
+# Claude-Code-Session-Konfiguration (enthält Token) — nie committen
+.claude/

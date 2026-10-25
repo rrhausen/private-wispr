@@ -107,14 +107,15 @@ impl Engine {
 
     /// 16-kHz-mono-f32-Samples transkribieren. Sprache ist für M0 auf Deutsch
     /// fixiert (Primärsprache laut specs); Auto-Detect folgt mit dem
-    /// Wörterbuch/M1.
-    pub fn transcribe(&mut self, samples: &[f32]) -> Result<TranscriptResult> {
+    /// Wörterbuch/M1. `vocabulary`: Fachwörter-Kanones aus dem Wörterbuch
+    /// (specs 4.5 — Biasing im Decode, soweit das Modell es unterstützt).
+    pub fn transcribe(&mut self, samples: &[f32], vocabulary: &[String]) -> Result<TranscriptResult> {
         let t0 = Instant::now();
         let options = RunOptions {
             task: Task::Transcribe,
             language: Some("de".to_string()),
             target_language: None,
-            vocabulary: Vec::new(),
+            vocabulary: vocabulary.to_vec(),
             ..Default::default()
         };
         let transcript = self

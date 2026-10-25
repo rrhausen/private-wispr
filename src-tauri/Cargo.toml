@@ -43,6 +43,10 @@ handy-recorder = "0.1"
 # Engine-Kern; plattformspezifische Backend-Features siehe target-Tabellen
 # (Cargo unifiziert Features über alle Tabellen hinweg).
 transcribe-cpp = { version = "0.4.1", default-features = false, features = ["serde"] }
+serde_yaml = "0.9.34"
+regex = "1.13.1"
+unicode-normalization = "0.1.26"
+rusqlite = { version = "0.41.0", features = ["bundled"] }
 
 # Windows x64: GPU via Vulkan, CPU-Module ladbar zur Laufzeit (Handy-Posture).
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]

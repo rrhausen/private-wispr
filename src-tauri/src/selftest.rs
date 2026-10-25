@@ -40,11 +40,16 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
 
     let samples = read_wav_16k_mono(path)?;
     let audio_secs = samples.len() as f64 / 16_000.0;
+    // Wörterbuch mitmessen (specs 4.5 + 6): Vocabulary in den Decode, danach
+    // Regel-Pipeline auf das Rohtranskript — Keimzelle für WER-/Fachbegriff-
+    // Metriken auf den Eval-Clips.
+    let dict = crate::dictionary::Dictionary::load();
     let t0 = std::time::Instant::now();
     let result = engine
-        .transcribe(&samples)
+        .transcribe(&samples, dict.vocabulary())
         .with_context(|| format!("Transkription fehlgeschlagen: {}", path.display()))?;
     let total_ms = t0.elapsed().as_millis();
+    let outcome = dict.apply(&result.text);
 
     let rt = if audio_secs > 0.0 {
         Some(total_ms as f64 / 1000.0 / audio_secs)
@@ -58,7 +63,10 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         "total_ms": total_ms,
         "realtime_factor": rt,
         "language": result.language,
-        "text": result.text,
+        "text": outcome.text,
+        "raw_text": result.text,
+        "applied_rules": outcome.applied,
+        "dictionary_version": dict.version,
     });
     // Base-Felder (Modell, Backend, Load-Zeit) dazumischen.
     if let (Some(dst), Some(src)) = (out.as_object_mut(), base.as_object()) {

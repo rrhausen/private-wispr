@@ -8,6 +8,7 @@
 //! in-process (Worker-Prozess-Isolation kommt in M1), Paste noch ohne
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
+mod dictionary;
 mod feedback;
 mod handoff;
 mod hotkey;
@@ -57,7 +58,13 @@ struct OverlayPayload {
 
 #[derive(Clone, Serialize)]
 struct LastPayload {
+    /// Endtext nach der Regel-Pipeline (das, was eingefügt wurde).
     text: String,
+    /// Rohtranskript vor den Regeln (Nachvollziehbarkeit, specs 4.8).
+    raw_text: String,
+    /// Angewandte Wörterbuch-Regeln.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    applied_rules: Vec<dictionary::AppliedRule>,
     audio_secs: f64,
     transcription_ms: u128,
     /// Wohin der Text ging: "Cursor" oder der hand-off-Dateipfad.
@@ -200,6 +207,51 @@ fn cancel_model_download() {
     model_download::cancel();
 }
 
+/// Wörterbuch-Status für die Einstellungen (Profile ein-/ausschaltbar).
+#[derive(Clone, Serialize)]
+struct DictionaryStatus {
+    dir: String,
+    /// Profile, die an Termen vorkommen (unabhängig ob aktiv).
+    profiles: Vec<String>,
+    active_profiles: Vec<String>,
+    locale: String,
+    term_count: usize,
+    alias_count: usize,
+    /// Fachwörter, die aktuell in den Decode gehen.
+    vocabulary_count: usize,
+}
+
+fn dictionary_status_inner(d: &dictionary::Dictionary) -> DictionaryStatus {
+    DictionaryStatus {
+        dir: dictionary::dir().display().to_string(),
+        profiles: d.profiles.clone(),
+        active_profiles: d.active_profiles.clone(),
+        locale: d.locale.clone(),
+        term_count: d.term_count,
+        alias_count: d.alias_count,
+        vocabulary_count: d.vocabulary().len(),
+    }
+}
+
+#[tauri::command]
+fn dictionary_status() -> DictionaryStatus {
+    dictionary_status_inner(&dictionary::Dictionary::load())
+}
+
+/// Profile umschalten: schreibt die `profiles:`-Zeile der YAML zurück und
+/// liefert den neuen Status (Terme bleiben unverändert).
+#[tauri::command]
+fn set_dictionary_profiles(active: Vec<String>) -> Result<DictionaryStatus, String> {
+    dictionary::set_active_profiles(&active)
+        .map(|d| dictionary_status_inner(&d))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_dictionary_dir() -> Result<(), String> {
+    dictionary::open_dir().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -301,7 +353,10 @@ pub fn run() {
             cancel_hotkey_capture,
             hook_status,
             download_model,
-            cancel_model_download
+            cancel_model_download,
+            dictionary_status,
+            set_dictionary_profiles,
+            open_dictionary_dir
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
@@ -493,32 +548,45 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
     let last = state.last_dictation.clone();
     let handle = app.clone();
     std::thread::spawn(move || {
+        // Wörterbuch je Diktat frisch laden (Datei ist jederzeit editierbar);
+        // Ladefehler werden in load() geloggt und ergeben ein leeres Wörterbuch.
+        let dict = dictionary::Dictionary::load();
+        let vocabulary = dict.vocabulary();
         let mut guard = engine.lock().unwrap();
         let Some(engine) = guard.as_mut() else { return };
-        match engine.transcribe(&spooled.samples) {
+        if !vocabulary.is_empty() {
+            info!("Decode mit {} Fachwörtern aus dem Wörterbuch", vocabulary.len());
+        }
+        match engine.transcribe(&spooled.samples, vocabulary) {
             Ok(result) => {
                 info!(
                     "Transkript ({} s Audio, {} ms): {}",
                     spooled.duration_secs, result.transcription_ms, result.text
                 );
+                // Regel-Pipeline (specs 4.5): NFC → Filler → Phrasen-Regeln.
+                let outcome = dict.apply(&result.text);
+                if !outcome.applied.is_empty() {
+                    info!("Wörterbuch angewandt: {:?}", outcome.applied);
+                }
+                let final_text = outcome.text;
                 *last.lock().unwrap() = Some(result.clone());
                 // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
                 let (target, done_msg) = match mode {
                     OutputMode::Cursor => {
-                        if let Err(e) = paste::paste_text(&result.text) {
+                        if let Err(e) = paste::paste_text(&final_text) {
                             warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
                         }
                         ("Cursor".to_string(), None)
                     }
                     OutputMode::Handoff => {
-                        let (target, ok) = match handoff::append(&result.text) {
+                        let (target, ok) = match handoff::append(&final_text) {
                             Ok(path) => {
                                 info!("Hand-off geschrieben: {}", path.display());
                                 (path.display().to_string(), true)
                             }
                             Err(e) => {
                                 error!("Hand-off fehlgeschlagen ({e:#}) — Fallback: Cursor-Paste");
-                                if let Err(e) = paste::paste_text(&result.text) {
+                                if let Err(e) = paste::paste_text(&final_text) {
                                     warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
                                 }
                                 ("Cursor (Hand-off fehlgeschlagen)".to_string(), false)
@@ -531,7 +599,9 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 let _ = handle.emit(
                     "pw://last",
                     LastPayload {
-                        text: result.text.clone(),
+                        text: final_text.clone(),
+                        raw_text: result.text.clone(),
+                        applied_rules: outcome.applied.clone(),
                         audio_secs: spooled.duration_secs,
                         transcription_ms: result.transcription_ms,
                         target,

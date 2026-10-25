@@ -17,6 +17,16 @@ interface Hotkeys {
   handoff: string;
 }
 
+interface DictionaryStatus {
+  dir: string;
+  profiles: string[];
+  active_profiles: string[];
+  locale: string;
+  term_count: number;
+  alias_count: number;
+  vocabulary_count: number;
+}
+
 interface Props {
   hotkeys: Hotkeys;
   onHotkeysChange: (hotkeys: Hotkeys) => void;
@@ -125,6 +135,33 @@ export default function SettingsPanel({
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [hookReady, setHookReady] = useState(true);
   const [download, setDownload] = useState<DownloadEvent | null>(null);
+  const [dict, setDict] = useState<DictionaryStatus | null>(null);
+  const [dictError, setDictError] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<DictionaryStatus>("dictionary_status").then(setDict).catch(console.error);
+  }, []);
+
+  // Profil umschalten: aktive Liste neu setzen, Status kommt zurück.
+  async function toggleProfile(name: string) {
+    if (!dict) return;
+    const active = new Set(dict.active_profiles);
+    if (active.has(name)) {
+      active.delete(name);
+    } else {
+      active.add(name);
+    }
+    setDictError(null);
+    try {
+      setDict(
+        await invoke<DictionaryStatus>("set_dictionary_profiles", {
+          active: [...active],
+        }),
+      );
+    } catch (e) {
+      setDictError(String(e));
+    }
+  }
 
   // Tastatur-Hook-Status: Ändern ist erst möglich, wenn der Hook verbunden
   // ist (Installation kann beim Start mehrfach fehlschlagen → Neuinstallation
@@ -529,6 +566,49 @@ export default function SettingsPanel({
           Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen (Bluetooth-Headsets
           müssen verbunden und als Eingabegerät aktiv sein).
         </span>
+      </Section>
+
+      <Section head="Wörterbuch — Fachbegriffe richtig schreiben">
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">
+              {dict
+                ? `${dict.term_count} Begriffe · ${dict.alias_count} Aliase · ${dict.vocabulary_count} in die Erkennung`
+                : "Lädt…"}
+            </span>
+            <span className="row-sub">
+              Regeln wirken auf jedes Diktat (Datei jederzeit im Editor änderbar).
+            </span>
+          </div>
+          <button className="btn" onClick={() => invoke("open_dictionary_dir").catch(console.error)}>
+            Ordner öffnen
+          </button>
+        </div>
+        {dict && dict.profiles.length > 0 && (
+          <>
+            <div className="chips">
+              {dict.profiles.map((p) => (
+                <button
+                  key={p}
+                  className={dict.active_profiles.includes(p) ? "chip active" : "chip"}
+                  onClick={() => void toggleProfile(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <span className="row-sub">
+              Profile schalten deren Begriffe frei. Beim Umschalten hier gehen Kommentare in
+              der YAML verloren — Begriffe nicht.
+            </span>
+          </>
+        )}
+        {dictError && (
+          <div className="notice" data-tone="error">
+            <span className="notice-icon">⚠</span>
+            <div>{dictError}</div>
+          </div>
+        )}
       </Section>
 
       <Section head="Modell">

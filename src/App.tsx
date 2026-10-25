@@ -23,8 +23,18 @@ interface StatusInfo {
   };
 }
 
+interface AppliedRule {
+  canonical: string;
+  matched: string;
+  count: number;
+}
+
 interface LastEvent {
+  /** Endtext nach der Regel-Pipeline. */
   text: string;
+  /** Rohtranskript vor den Regeln. */
+  raw_text?: string;
+  applied_rules?: AppliedRule[];
   audio_secs: number;
   transcription_ms: number;
   target: string;
@@ -181,6 +191,8 @@ export default function App() {
                   <span className="meta-line">
                     {last.audio_secs.toFixed(1)} s Audio · {last.transcription_ms} ms
                     Transkription · Ziel: {last.target}
+                    {last.applied_rules && last.applied_rules.length > 0 &&
+                      ` · ${last.applied_rules.reduce((n, r) => n + r.count, 0)}× Wörterbuch`}
                   </span>
                 </>
               ) : (
