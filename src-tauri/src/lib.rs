@@ -13,6 +13,7 @@ mod feedback;
 mod fitting;
 mod focus;
 mod handoff;
+mod history;
 mod hotkey;
 mod model_download;
 mod paste;
@@ -257,6 +258,29 @@ fn open_dictionary_dir() -> Result<(), String> {
     dictionary::open_dir().map_err(|e| e.to_string())
 }
 
+// ─── Historie (specs 4.8) ───────────────────────────────────────────────
+
+#[tauri::command]
+fn history_list(limit: u32) -> Vec<history::Entry> {
+    history::list(limit.clamp(1, 100))
+}
+
+#[tauri::command]
+fn history_delete(id: i64) -> Result<(), String> {
+    history::delete(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn history_clear() -> Result<(), String> {
+    history::clear().map_err(|e| e.to_string())
+}
+
+/// Text in die Zwischenablage legen (Klick auf einen Historien-Eintrag).
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    paste::copy_to_clipboard(&text).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -362,7 +386,11 @@ pub fn run() {
             cancel_model_download,
             dictionary_status,
             set_dictionary_profiles,
-            open_dictionary_dir
+            open_dictionary_dir,
+            history_list,
+            history_delete,
+            history_clear,
+            copy_text
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");
@@ -574,6 +602,13 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     "Transkript ({} s Audio, {} ms): {}",
                     spooled.duration_secs, result.transcription_ms, result.text
                 );
+                let info = engine.info().clone();
+                // Audio standardmäßig löschen (specs 4.8) — sofort nach der
+                // Transkription. (Bei Transkriptions-Fehlern bleibt das WAV
+                // für die Fehlersuche liegen, siehe Err-Zweig.)
+                if let Err(e) = std::fs::remove_file(&spooled.wav_path) {
+                    warn!("Spool-WAV nicht löschbar ({e}): {}", spooled.wav_path.display());
+                }
                 // Regel-Pipeline (specs 4.5/4.6): NFC → Filler → Phrasen-
                 // Regeln → Text-Fitting. Naht-Kontext (Zeichen am Cursor
                 // der Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
@@ -584,7 +619,9 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 let final_text = fitting::fit(&outcome.text, &fitting::SeamContext::none());
                 *last.lock().unwrap() = Some(result.clone());
                 // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
-                let (target, done_msg) = match mode {
+                // history_mode protokolliert, was tatsächlich passiert ist
+                // („clipboard" = Fokus-Wechsel-Fallback).
+                let (target, done_msg, history_mode) = match mode {
                     OutputMode::Cursor => {
                         // Fokus-Check (specs 4.6): Ein anderes Fenster vorne
                         // heißt, Strg+V würde ins falsche Feld gehen — Text
@@ -597,11 +634,11 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                                     "Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage."
                                 );
                             }
-                            ("Cursor".to_string(), None)
+                            ("Cursor".to_string(), None, "cursor")
                         } else {
                             info!(
                                 "Fokus gewechselt (Ziel war {:?}) — Text in die Zwischenablage",
-                                focus_snap.and_then(|s| s.process.clone())
+                                focus_snap.as_ref().and_then(|s| s.process.clone())
                             );
                             if let Err(e) = paste::copy_to_clipboard(&final_text) {
                                 error!("Zwischenablage fehlgeschlagen ({e:#})");
@@ -609,6 +646,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                             (
                                 "Zwischenablage (Fokus gewechselt)".to_string(),
                                 Some("→ Zwischenablage — Fokus gewechselt".to_string()),
+                                "clipboard",
                             )
                         }
                     }
@@ -627,7 +665,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                             }
                         };
                         let done_msg = if ok { Some("→ hand-off ✓".to_string()) } else { None };
-                        (target, done_msg)
+                        (target, done_msg, "handoff")
                     }
                 };
                 let _ = handle.emit(
@@ -641,11 +679,33 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                         target,
                     },
                 );
+                // Historie (specs 4.8): Rohtranskript, Endtext, angewandte
+                // Regeln mit Version, Ziel-App, Modell/Engine. Ein Fehler
+                // hier darf das Diktat nicht ungeschehen machen.
+                let entry = history::NewEntry {
+                    mode: history_mode.to_string(),
+                    raw_transcript: result.text.clone(),
+                    final_text: final_text.clone(),
+                    dictionary_version: dict.version.clone(),
+                    applied: outcome.applied.clone(),
+                    target_app: focus_snap.as_ref().and_then(|s| s.process.clone()),
+                    duration_s: spooled.duration_secs,
+                    model: info.model_name.clone(),
+                    engine: info.backend.clone(),
+                };
+                if let Err(e) = history::insert(&entry) {
+                    error!("Historie fehlgeschlagen ({e:#}) — Diktat bleibt trotzdem ausgegeben");
+                } else {
+                    let _ = handle.emit("pw://history-changed", ());
+                }
                 overlay_emit(&handle, OverlayPayload { phase: "done", message: done_msg, level: None });
                 overlay_hide_later(&handle, Duration::from_millis(900));
             }
             Err(e) => {
                 error!("Transkription fehlgeschlagen: {e:#}");
+                // WAV bleibt für die Fehlersuche liegen (Audio wird sonst
+                // standardmäßig direkt nach der Transkription gelöscht).
+                warn!("Audio aufbewahrt für Retry: {}", spooled.wav_path.display());
                 overlay_emit(
                     &handle,
                     OverlayPayload { phase: "error", message: Some(e.to_string()), level: None },

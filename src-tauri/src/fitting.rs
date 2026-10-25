@@ -150,11 +150,6 @@ fn fit_casing(text: &str, ctx: &SeamContext) -> String {
     out.into_iter().collect()
 }
 
-fn is_function_word(word: &[char]) -> bool {
-    let s: String = word.iter().collect::<String>().to_lowercase();
-    FUNCTION_WORDS.contains(&s.as_str())
-}
-
 /// Nächste zusammenhängende Buchstabenfolge ab `from` (Start, Ende).
 fn next_word(chars: &[char], from: usize) -> Option<(usize, usize)> {
     let start = (from..chars.len()).find(|&i| chars[i].is_alphabetic())?;

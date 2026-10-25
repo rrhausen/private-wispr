@@ -31,11 +31,11 @@ pub struct ActiveRecording {
     pub mode: OutputMode,
 }
 
-/// Ergebnis einer beendeten Aufnahme. `wav_path` wird ab M1 in die Historie
-/// geschrieben (Audio-Archivierung optional).
+/// Ergebnis einer beendeten Aufnahme. `wav_path` wird nach der Transkription
+/// standardmäßig gelöscht (specs 4.8: Audio default löschen; bei Fehler
+/// bleibt es für die Fehlersuche liegen). Ein optionales Archiv folgt später.
 pub struct SpooledRecording {
     pub samples: Vec<f32>,
-    #[allow(dead_code)]
     pub wav_path: PathBuf,
     pub duration_secs: f64,
 }

@@ -29,6 +29,42 @@ interface AppliedRule {
   count: number;
 }
 
+interface HistoryEntry {
+  id: number;
+  ts: string;
+  mode: "cursor" | "handoff" | "clipboard";
+  raw_transcript: string;
+  final_text: string;
+  applied_rules: { dictionary_version?: string; rules?: AppliedRule[] } | null;
+  target_app: string | null;
+  duration_s: number;
+  model: string;
+  engine: string;
+}
+
+const MODE_LABELS: Record<HistoryEntry["mode"], string> = {
+  cursor: "Cursor",
+  handoff: "Hand-off",
+  clipboard: "Zwischenablage",
+};
+
+function histTime(ts: string): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const sameDay =
+    d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear();
+  return sameDay
+    ? d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
+
 interface LastEvent {
   /** Endtext nach der Regel-Pipeline. */
   text: string;
@@ -56,6 +92,8 @@ export default function App() {
   const [tab, setTab] = useState<"overview" | "settings">("overview");
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [last, setLast] = useState<LastEvent | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
   const [handoffDir, setHandoffDir] = useState("");
@@ -63,6 +101,42 @@ export default function App() {
     cursor: "ctrl+alt+space",
     handoff: "ctrl+alt+h",
   });
+
+  function loadHistory() {
+    invoke<HistoryEntry[]>("history_list", { limit: 10 })
+      .then(setHistory)
+      .catch(console.error);
+  }
+
+  function deleteEntry(id: number) {
+    invoke("history_delete", { id })
+      .then(loadHistory)
+      .catch(console.error);
+  }
+
+  function clearHistory() {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      window.setTimeout(() => setConfirmClear(false), 4000);
+      return;
+    }
+    setConfirmClear(false);
+    invoke("history_clear")
+      .then(loadHistory)
+      .catch(console.error);
+  }
+
+  function copyEntry(text: string) {
+    invoke("copy_text", { text }).catch(console.error);
+  }
+
+  useEffect(() => {
+    loadHistory();
+    const un3 = listen("pw://history-changed", () => loadHistory());
+    return () => {
+      void un3.then((f) => f());
+    };
+  }, []);
 
   useEffect(() => {
     invoke<StatusInfo>("status")
@@ -183,7 +257,7 @@ export default function App() {
           </section>
 
           <section className="section">
-            <div className="section-head">Letztes Diktat</div>
+            <div className="section-head">Letzte Diktate</div>
             <div className="card">
               {last ? (
                 <>
@@ -196,7 +270,44 @@ export default function App() {
                   </span>
                 </>
               ) : (
-                <span className="row-sub">Noch nichts diktiert.</span>
+                <span className="row-sub">
+                  {history.length > 0 ? "Noch nichts diktiert in dieser Sitzung." : "Noch nichts diktiert."}
+                </span>
+              )}
+              {history.map((h) => (
+                <div className="hist-row" key={h.id}>
+                  <button
+                    className="hist-main"
+                    title="Klicken zum Kopieren"
+                    onClick={() => copyEntry(h.final_text)}
+                  >
+                    <span className="hist-snippet">{h.final_text}</span>
+                    <span className="hist-meta">
+                      {histTime(h.ts)} · {MODE_LABELS[h.mode]}
+                      {h.target_app ? ` · ${h.target_app}` : ""} · {h.duration_s.toFixed(1)} s
+                      {h.applied_rules?.rules && h.applied_rules.rules.length > 0 &&
+                        ` · ${h.applied_rules.rules.reduce((n, r) => n + r.count, 0)}× Wörterbuch`}
+                    </span>
+                  </button>
+                  <button
+                    className="btn quiet hist-del"
+                    title="Eintrag löschen"
+                    onClick={() => deleteEntry(h.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {history.length > 0 && (
+                <div className="row-line">
+                  <span className="row-sub">
+                    Klick auf einen Eintrag kopiert den Text. Aufbewahrung: 90 Tage
+                    (Einstellungen).
+                  </span>
+                  <button className="btn quiet" onClick={clearHistory}>
+                    {confirmClear ? "Wirklich alles löschen?" : "Alles löschen"}
+                  </button>
+                </div>
               )}
             </div>
           </section>

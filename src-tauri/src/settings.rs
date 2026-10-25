@@ -54,8 +54,15 @@ pub struct Settings {
     /// Dezenter Klick beim Aufnahme-Start; default an.
     #[serde(default = "default_true")]
     pub feedback_sound: bool,
+    /// Historien-Aufbewahrung in Tagen (specs 4.8); 0 = unbegrenzt.
+    #[serde(default = "default_history_retention_days")]
+    pub history_retention_days: u64,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
+}
+
+fn default_history_retention_days() -> u64 {
+    90
 }
 
 impl Default for Settings {
@@ -65,6 +72,7 @@ impl Default for Settings {
             handoff_dir: None,
             overlay_enabled: true,
             feedback_sound: true,
+            history_retention_days: default_history_retention_days(),
             hotkeys: HotkeySettings::default(),
         }
     }
@@ -110,6 +118,7 @@ mod tests {
         assert_eq!(s.mic_device.as_deref(), Some("BT700"));
         assert_eq!(s.handoff_dir, None);
         assert!(s.overlay_enabled);
+        assert_eq!(s.history_retention_days, 90);
     }
 
     #[test]
