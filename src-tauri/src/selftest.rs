@@ -50,6 +50,7 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         .with_context(|| format!("Transkription fehlgeschlagen: {}", path.display()))?;
     let total_ms = t0.elapsed().as_millis();
     let outcome = dict.apply(&result.text);
+    let fitted = crate::fitting::fit(&outcome.text, &crate::fitting::SeamContext::none());
 
     let rt = if audio_secs > 0.0 {
         Some(total_ms as f64 / 1000.0 / audio_secs)
@@ -63,7 +64,7 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         "total_ms": total_ms,
         "realtime_factor": rt,
         "language": result.language,
-        "text": outcome.text,
+        "text": fitted,
         "raw_text": result.text,
         "applied_rules": outcome.applied,
         "dictionary_version": dict.version,

@@ -10,6 +10,7 @@
 
 mod dictionary;
 mod feedback;
+mod fitting;
 mod handoff;
 mod hotkey;
 mod model_download;
@@ -563,12 +564,14 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     "Transkript ({} s Audio, {} ms): {}",
                     spooled.duration_secs, result.transcription_ms, result.text
                 );
-                // Regel-Pipeline (specs 4.5): NFC → Filler → Phrasen-Regeln.
+                // Regel-Pipeline (specs 4.5/4.6): NFC → Filler → Phrasen-
+                // Regeln → Text-Fitting. Naht-Kontext (Zeichen am Cursor
+                // der Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
                 let outcome = dict.apply(&result.text);
                 if !outcome.applied.is_empty() {
                     info!("Wörterbuch angewandt: {:?}", outcome.applied);
                 }
-                let final_text = outcome.text;
+                let final_text = fitting::fit(&outcome.text, &fitting::SeamContext::none());
                 *last.lock().unwrap() = Some(result.clone());
                 // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
                 let (target, done_msg) = match mode {
