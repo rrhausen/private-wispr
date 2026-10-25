@@ -149,7 +149,12 @@ fn set_feedback_enabled(enabled: bool) -> Result<(), String> {
 /// danach persistieren (bei Fehler bleibt die alte Belegung aktiv).
 #[tauri::command]
 fn set_hotkeys(cursor: String, handoff: String) -> Result<(), String> {
-    hotkey::set_hotkeys(&cursor, &handoff)?;
+    if let Err(msg) = hotkey::set_hotkeys(&cursor, &handoff) {
+        // Keine stillen Ablehnungen: Grund + gewünschte Belegung ins Log,
+        // damit Capture-Probleme nachvollziehbar sind.
+        log::warn!("set_hotkeys abgelehnt: {msg} (cursor={cursor:?}, handoff={handoff:?})");
+        return Err(msg);
+    }
     let mut settings = settings::load();
     settings.hotkeys.cursor = cursor;
     settings.hotkeys.handoff = handoff;
@@ -206,6 +211,17 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            // Panics app-weitem in die Log-Datei leiten (Threads sterben sonst
+            // still — nur auf der Konsole sichtbar). Der Default-Hook
+            // (Stderr) läuft anschließend weiter.
+            let default_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let thread = std::thread::current();
+                let name = thread.name().unwrap_or("<unbenannt>");
+                log::error!("PANIK in Thread {name}: {info}");
+                default_hook(info);
+            }));
+
             let initial = settings::load();
             app.manage(AppState {
                 engine: Arc::new(Mutex::new(None)),

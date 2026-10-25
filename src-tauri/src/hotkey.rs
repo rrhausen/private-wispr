@@ -77,136 +77,183 @@ pub fn start(app: AppHandle) -> anyhow::Result<()> {
     );
 
     std::thread::Builder::new()
-        .name("pw-hotkey".into())
+        .name("pw-hotkey-watchdog".into())
         .spawn(move || {
-            // Die Low-Level-Hook-Installation kann pro Start fehlgehen, ohne
-            // dass der Listener-Thread stirbt (Bug 25.10.: taube Instanzen,
-            // v. a. aus dem IDE-Terminal; Ursache jenseits unserer Kontrolle —
-            // Token/Job/Drosselung unauffällig). Gegenmaßnahmen: Selbsttest
-            // per F24-Injektion, Neuinstallation bis der Test besteht (in der
-            // Startphase schnell: ~1 s/Takt, sonst 2 s), Status-Event für die
-            // UI und lautes Loggen statt stiller Taubheit.
-            let blocking = BLOCKING.get().expect("BLOCKING ist gesetzt").clone();
-            let mut listener: Option<KeyboardListener> = None;
-            let mut listener_since = Instant::now();
-            let mut reconnect_wait_until = Instant::now();
-            let mut connected = false; // erster Selbsttest/Echt-Ereignis war erfolgreich
-            let mut last_event_at = Instant::now();
-            let mut probe_sent_at: Option<Instant> = None;
-            let mut probe_baseline = Instant::now();
-            let mut failed_attempts: u32 = 0;
-
-            let set_ready = |ready: bool| {
-                if HOOK_READY.swap(ready, Ordering::SeqCst) != ready {
-                    let _ = app.emit("pw://hook-status", serde_json::json!({ "ready": ready }));
-                }
-            };
-            set_ready(false);
-
+            // Die Loop kann sterben (Panic, z. B. vergiftetes Lock) — das war
+            // am 25.10. unsichtbar, weil Panics nur auf die Konsole gingen.
+            // Der Watchdog startet sie neu; die Panic selbst loggt der
+            // Panic-Hook in lib.rs.
+            let mut backoff = Duration::from_secs(1);
             loop {
-                capture_tick();
+                let app = app.clone();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_hotkey_loop(app)
+                }));
+                error!(
+                    "Hotkey-Loop beendet ({:?}) — Neustart in {backoff:?}",
+                    result.map_err(|_| "PANIK")
+                );
+                std::thread::sleep(backoff);
+                backoff = (backoff * 2).min(Duration::from_secs(30));
+            }
+        })
+        .map(|_| ())
+        .map_err(|e| anyhow::anyhow!("Watchdog-Thread konnte nicht gestartet werden: {e}"))?;
+    Ok(())
+}
 
-                // Empfangen (10-ms-Takt) und Kanten verarbeiten.
-                if let Some(l) = listener.as_ref() {
-                    let mut died = false;
-                    loop {
-                        match l.recv_timeout(Duration::from_millis(10)) {
-                            Ok(ev) => {
-                                last_event_at = Instant::now();
-                                if !connected {
-                                    connected = true;
-                                    failed_attempts = 0;
-                                    set_ready(true);
-                                    info!("Tastatur-Hook verbunden (Selbsttest bestanden)");
-                                }
-                                handle_event(&app, &ev);
-                            }
-                            Err(handy_keys::Error::Timeout) => break,
-                            Err(_) => {
-                                // Kanal getrennt: Hook-Thread wurde beendet.
-                                died = true;
-                                break;
-                            }
-                        }
-                    }
-                    if died {
-                        if failed_attempts == 0 {
-                            error!(
-                                "Tastatur-Hook-Thread wurde beendet — Hook-Installation ist in \
-                                 diesem Prozess-Kontext fehlgeschlagen. Neuinstallation, bis der \
-                                 Selbsttest besteht."
-                            );
-                        }
-                        failed_attempts += 1;
-                        listener = None;
-                        set_ready(false);
-                        reconnect_wait_until =
-                            Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
-                    }
-                }
+fn run_hotkey_loop(app: AppHandle) {
+    // Loslassen-Events können verloren gehen (z. B. Hook-Neuinstallation) —
+    // gedrückte Modi zurücksetzen, sonst schluckt der nächste Druck keine
+    // Down-Kante mehr und der Hotkey wirkt tot.
+    PRESSED.lock().unwrap().clear();
+    // Der Hook-Thread kann in manchen Prozess-Kontexten bei der
+    // Installation sterben (Bug 25.10.: taube Instanzen, v. a. aus dem
+    // IDE-Terminal; Ursache jenseits unserer Kontrolle — Token/Job/
+    // Drosselung unauffällig). Gegenmaßnahmen: Selbsttest per
+    // F24-Injektion, Neuinstallation bis der Test besteht (in der Startphase
+    // schnell: ~1 s/Takt, sonst 2 s), Status-Event für die UI und lautes
+    // Loggen statt stiller Taubheit.
+    let blocking = BLOCKING.get().expect("BLOCKING ist gesetzt").clone();
+    let mut listener: Option<KeyboardListener> = None;
+    let mut listener_since = Instant::now();
+    let mut reconnect_wait_until = Instant::now();
+    let mut connected = false; // erster Selbsttest/Echt-Ereignis war erfolgreich
+    let mut last_event_at = Instant::now();
+    let mut probe_sent_at: Option<Instant> = None;
+    let mut probe_baseline = Instant::now();
+    let mut failed_attempts: u32 = 0;
+    let mut blocked_reports: u32 = 0; // durch elevated Vordergrund blockte Tests
+    let mut next_probe_after = Instant::now();
 
-                // Listener (erneut) installieren.
-                if listener.is_none() && Instant::now() >= reconnect_wait_until {
-                    match KeyboardListener::new_with_blocking(blocking.clone()) {
-                        Ok(l) => {
-                            listener = Some(l);
-                            listener_since = Instant::now();
+    let set_ready = |ready: bool| {
+        if HOOK_READY.swap(ready, Ordering::SeqCst) != ready {
+            let _ = app.emit("pw://hook-status", serde_json::json!({ "ready": ready }));
+        }
+    };
+    set_ready(false);
+
+    loop {
+            capture_tick();
+
+            // Empfangen (10-ms-Takt) und Kanten verarbeiten.
+            if let Some(l) = listener.as_ref() {
+                let mut died = false;
+                loop {
+                    match l.recv_timeout(Duration::from_millis(10)) {
+                        Ok(ev) => {
                             last_event_at = Instant::now();
-                            probe_sent_at = None;
-                        }
-                        Err(e) => {
-                            if failed_attempts == 0 {
-                                error!("KeyboardListener fehlgeschlagen: {e} — Diktat reagiert nicht");
-                                failed_attempts += 1;
-                            }
-                            reconnect_wait_until =
-                                Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
-                        }
-                    }
-                }
-
-                // Selbsttest: eine harmlose F24 injizieren (praktisch nirgends
-                // belegt) und prüfen, ob sie den eigenen Hook erreicht. In der
-                // Startphase nach 300 ms; nach dem ersten Erfolg nur noch bei
-                // langer Stille (120 s), um auch späteres Stillwerden zu
-                // bemerken. Während des Captures auslassen, damit die F24
-                // nicht als neue Kombination landet.
-                let probe_delay = if connected {
-                    Duration::from_secs(120)
-                } else {
-                    Duration::from_millis(300)
-                };
-                let silence = last_event_at.elapsed();
-                let want_probe = listener.is_some()
-                    && probe_sent_at.is_none()
-                    && listener_since.elapsed() >= Duration::from_millis(300)
-                    && ((!connected && listener_since.elapsed() >= probe_delay)
-                        || (connected && silence >= Duration::from_secs(120)));
-                if want_probe && CAPTURE.lock().unwrap().is_none() {
-                    send_self_probe();
-                    probe_baseline = last_event_at;
-                    probe_sent_at = Some(Instant::now());
-                }
-                if let Some(at) = probe_sent_at {
-                    if at.elapsed() >= Duration::from_millis(500) {
-                        if last_event_at > probe_baseline {
-                            // Ein Ereignis (F24 oder echte Taste) ist angekommen.
                             if !connected {
                                 connected = true;
                                 failed_attempts = 0;
                                 set_ready(true);
                                 info!("Tastatur-Hook verbunden (Selbsttest bestanden)");
                             }
+                            handle_event(&app, &ev);
+                        }
+                        Err(handy_keys::Error::Timeout) => break,
+                        Err(_) => {
+                            // Kanal getrennt: Hook-Thread wurde beendet.
+                            died = true;
+                            break;
+                        }
+                    }
+                }
+                if died {
+                    if failed_attempts == 0 {
+                        error!(
+                            "Tastatur-Hook-Thread wurde beendet — Hook-Installation ist in \
+                             diesem Prozess-Kontext fehlgeschlagen. Neuinstallation, bis der \
+                             Selbsttest besteht."
+                        );
+                    }
+                    failed_attempts += 1;
+                    listener = None;
+                    set_ready(false);
+                    reconnect_wait_until =
+                        Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
+                }
+            }
+
+            // Listener (erneut) installieren.
+            if listener.is_none() && Instant::now() >= reconnect_wait_until {
+                match KeyboardListener::new_with_blocking(blocking.clone()) {
+                    Ok(l) => {
+                        listener = Some(l);
+                        listener_since = Instant::now();
+                        last_event_at = Instant::now();
+                        probe_sent_at = None;
+                    }
+                    Err(e) => {
+                        if failed_attempts == 0 {
+                            error!("KeyboardListener fehlgeschlagen: {e} — Diktat reagiert nicht");
+                            failed_attempts += 1;
+                        }
+                        reconnect_wait_until =
+                            Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
+                    }
+                }
+            }
+
+            // Selbsttest: eine harmlose F24 injizieren (praktisch nirgends
+            // belegt) und prüfen, ob sie den eigenen Hook erreicht. In der
+            // Startphase nach 300 ms; nach dem ersten Erfolg nur noch bei
+            // langer Stille (120 s), um auch späteres Stillwerden zu
+            // bemerken. Während des Captures auslassen, damit die F24
+            // nicht als neue Kombination landet.
+            let probe_delay = if connected {
+                Duration::from_secs(120)
+            } else {
+                Duration::from_millis(300)
+            };
+            let silence = last_event_at.elapsed();
+            let want_probe = listener.is_some()
+                && probe_sent_at.is_none()
+                && Instant::now() >= next_probe_after
+                && listener_since.elapsed() >= Duration::from_millis(300)
+                && ((!connected && listener_since.elapsed() >= probe_delay)
+                    || (connected && silence >= Duration::from_secs(120)));
+            if want_probe && CAPTURE.lock().unwrap().is_none() {
+                send_self_probe();
+                probe_baseline = last_event_at;
+                probe_sent_at = Some(Instant::now());
+            }
+            if let Some(at) = probe_sent_at {
+                if at.elapsed() >= Duration::from_millis(500) {
+                    if last_event_at > probe_baseline {
+                        // Ein Ereignis (F24 oder echte Taste) ist angekommen.
+                        if !connected {
+                            connected = true;
+                            failed_attempts = 0;
+                            set_ready(true);
+                            info!("Tastatur-Hook verbunden (Selbsttest bestanden)");
+                        }
+                    } else {
+                        let (fg_exe, fg_elevated) = foreground_exe_and_elevated();
+                        if fg_elevated {
+                            // Der Test ist durch UIPI blockt (elevated Fenster im
+                            // Vordergrund blockt NUR injizierte Tasten, nicht
+                            // echte). Der Hook kann gesund sein — nicht neu
+                            // installieren, in 5 s erneut prüfen.
+                            if blocked_reports % 10 == 0 {
+                                info!(
+                                    "Selbsttest durch elevated Vordergrund ({fg_exe}) blockiert — \
+                                     Hook bleibt installiert, Prüfung wiederholt sich \
+                                     (Versuch {})",
+                                    blocked_reports + 1
+                                );
+                            }
+                            blocked_reports += 1;
+                            next_probe_after = Instant::now() + Duration::from_secs(5);
                         } else {
                             failed_attempts += 1;
+                            blocked_reports = 0;
                             if failed_attempts == 1 {
                                 warn!(
-                                    "Hook-Selbsttest FEHLGESCHLAGEN: das eigene F24-Ereignis wurde \
-                                     nicht gesehen. Der Hook wird neu installiert, bis es klappt — \
-                                     Diktat/Hotkey-Änderung sind erst danach nutzbar (in der UI als \
-                                     „wird verbunden“ sichtbar). Hinweis: ein elevated Fenster im \
-                                     Vordergrund kann NUR den Test blocken (UIPI), echte Tasten \
-                                     funktionieren dann trotzdem."
+                                    "Hook-Selbsttest FEHLGESCHLAGEN (Vordergrund: {fg_exe}): das \
+                                     eigene F24-Ereignis wurde nicht gesehen. Der Hook wird neu \
+                                     installiert, bis es klappt — Diktat ist erst danach nutzbar \
+                                     (in der UI als „wird verbunden“ sichtbar)."
                                 );
                             } else if failed_attempts % 10 == 0 {
                                 info!("Hook weiterhin taub (Versuch {failed_attempts}) — Neuinstallation läuft weiter");
@@ -216,20 +263,17 @@ pub fn start(app: AppHandle) -> anyhow::Result<()> {
                             reconnect_wait_until =
                                 Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
                         }
-                        probe_sent_at = None;
                     }
-                }
-
-                if listener.is_none() {
-                    std::thread::sleep(Duration::from_millis(50));
-                } else {
-                    std::thread::sleep(Duration::from_millis(10));
+                    probe_sent_at = None;
                 }
             }
-        })
-        .map(|_| ())
-        .map_err(|e| anyhow::anyhow!("Hotkey-Thread konnte nicht gestartet werden: {e}"))?;
-    Ok(())
+
+            if listener.is_none() {
+                std::thread::sleep(Duration::from_millis(50));
+            } else {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
 }
 
 /// Ist der Tastatur-Hook aktuell verbunden (Selbsttest bestanden)?
@@ -299,6 +343,7 @@ pub fn set_hotkeys(cursor: &str, handoff: &str) -> Result<(), String> {
         .ok_or_else(|| "Hotkey-System noch nicht bereit".to_string())?;
 
     let mut active = ACTIVE.lock().unwrap();
+    let mut pressed = PRESSED.lock().unwrap();
     let mut set = blocking.lock().unwrap();
     for (old, _) in active.iter() {
         set.remove(old);
@@ -307,6 +352,9 @@ pub fn set_hotkeys(cursor: &str, handoff: &str) -> Result<(), String> {
         (cursor_hotkey, OutputMode::Cursor),
         (handoff_hotkey, OutputMode::Handoff),
     ];
+    // Bei Wechsel der Belegung gedrückte Modi zurücksetzen: das Loslassen
+    // der alten Kombination darf die neue nicht klemmen.
+    pressed.clear();
     for (new, _) in active.iter() {
         set.insert(*new);
     }
@@ -764,5 +812,59 @@ mod tests {
             let round: Hotkey = hotkey.to_handy_string().parse().unwrap();
             assert_eq!(hotkey.to_handy_string(), round.to_handy_string());
         }
+    }
+}
+
+/// Vordergrund-Fenster als (Prozessname, elevated?) — der Selbsttest muss
+/// wissen, ob ein elevated Fenster NUR den Test blockt (UIPI blockt
+/// SendInput, aber keine echten Tasten).
+#[cfg(target_os = "windows")]
+fn foreground_exe_and_elevated() -> (String, bool) {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows::Win32::System::Threading::{
+        OpenProcess, OpenProcessToken, QueryFullProcessImageNameW,
+        PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.0.is_null() {
+            return ("<kein Fenster>".into(), false);
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return (format!("<pid {pid}>"), false);
+        };
+        let mut name = [0u16; 260];
+        let mut len = name.len() as u32;
+        let exe = if QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(name.as_mut_ptr()), &mut len).is_ok() {
+            String::from_utf16_lossy(&name[..len as usize])
+        } else {
+            format!("<pid {pid}>")
+        };
+        let mut elevated = false;
+        let mut token = Default::default();
+        if OpenProcessToken(handle, TOKEN_QUERY, &mut token).is_ok() {
+            let mut elev = TOKEN_ELEVATION::default();
+            let mut rl = 0u32;
+            if GetTokenInformation(
+                token,
+                TokenElevation,
+                Some(&mut elev as *mut _ as *mut core::ffi::c_void),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut rl,
+            )
+            .is_ok()
+            {
+                elevated = elev.TokenIsElevated != 0;
+            }
+            let _ = CloseHandle(token);
+        }
+        let _ = CloseHandle(handle);
+        (exe, elevated)
     }
 }
