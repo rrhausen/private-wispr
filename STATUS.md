@@ -34,6 +34,12 @@ Session-Handoff-Datei in `hand-off/` (lokal, nicht im Repo).
 | Tray-Fix (X versteckt, Doppelklick öffnet) + README | `121a162` | ✅ build | GUI offen |
 | Installationspaket (NSIS + Engine-DLLs als Resources, verifiziert) | `2cc17e4` | ✅ 7-Zip-Check | Laptop-Test offen |
 
+**Nachgetragen 25.10. (Session Hotkey-/Mikrofon-Fixes):**
+`f4549e0` PTT-Down-Logging, `846e4b0` Panic-Sichtbarkeit + Hook-Watchdog +
+UIPI-bewusster Selbsttest, `b29e3fe` Webview-Key-Capture, `2596b2f` warm
+gehaltenes Mikrofon (BT-Anfangsverlust, 5-Min-Reaper) — Live-Nachweis des
+Warmhalts durch Nutzer offen.
+
 **Offen von Sprint 1:** GUI-Verifizierung durch Nutzer (4 Punkte in
 `hand-off/SESSION-HANDOFF-2026-10-25.md`); Laptop-Installation.
 
