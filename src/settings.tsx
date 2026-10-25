@@ -55,7 +55,10 @@ const KEY_LABELS: Record<string, string> = {
 export function hotkeyLabel(hotkey: string): string {
   return hotkey
     .split("+")
-    .map((part) => KEY_LABELS[part.trim()] ?? part.trim())
+    .map((part) => {
+      const key = part.trim();
+      return KEY_LABELS[key] ?? (key.length === 1 ? key.toUpperCase() : key);
+    })
     .join("+");
 }
 
@@ -398,7 +401,7 @@ export default function SettingsPanel({
         <span className="row-sub">
           Gewünschte Kombination drücken — auch nur Modifier (z. B. Strg+Alt). Escape bricht
           ab. Nackte Tasten ohne Modifier sind nicht erlaubt, weil sie in anderen Apps
-          blockt wären.
+          blockiert wären.
         </span>
         {hotkeyError && (
           <div className="notice" data-tone="error">

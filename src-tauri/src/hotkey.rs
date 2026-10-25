@@ -193,7 +193,7 @@ fn validate(hotkey_str: &str) -> Result<Hotkey, String> {
     if hotkey.modifiers.is_empty() && !is_function_key(&format!("{key}")) {
         return Err(
             "Ohne Modifier (Strg/Alt/Win/Shift) würde die Taste in allen anderen Apps \
-             blockt — bitte einen Modifier mit drücken oder eine F-Taste wählen."
+             blockiert — bitte einen Modifier mit drücken oder eine F-Taste wählen."
                 .to_string(),
         );
     }
@@ -209,6 +209,57 @@ fn is_function_key(display: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Repro für den Capture-Bug vom 25.10.: Der Key-Capture sieht von
+    /// handy-keys stets seitenspezifische Modifier (CtrlLeft/OptLeft …). Der
+    /// zurückgegebene String muss daraus Compound-Modifier machen — sonst
+    /// matchte ein gespeichertes „ctrl_left+alt_left+m" nur auf die linke
+    /// Seite und das Label zeigte den Rohstring.
+    #[test]
+    fn capture_normalisiert_seiten_modifikatoren() {
+        let hotkey = Hotkey::new(
+            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT),
+            Some(Key::M),
+        )
+        .unwrap();
+        assert_eq!(hotkey.to_handy_string(), "ctrl+alt+m");
+
+        // Roundtrip: Der String muss wieder parsebar sein und danach BEIDE
+        // Seiten matchen (wie die Defaults „ctrl+alt+space").
+        let round: Hotkey = hotkey.to_handy_string().parse().unwrap();
+        assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT));
+        assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
+    }
+
+    #[test]
+    fn generalize_alle_gruppen() {
+        assert_eq!(generalize_modifiers(Modifiers::empty()), Modifiers::empty());
+        assert_eq!(generalize_modifiers(Modifiers::SHIFT_LEFT), Modifiers::SHIFT);
+        assert_eq!(generalize_modifiers(Modifiers::CMD_RIGHT), Modifiers::CMD);
+        assert_eq!(
+            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT | Modifiers::FN),
+            Modifiers::CTRL | Modifiers::OPT | Modifiers::FN,
+        );
+        // Bereits compound Modifier bleiben unverändert.
+        assert_eq!(generalize_modifiers(Modifiers::CTRL), Modifiers::CTRL);
+    }
+
+    /// Modifier-only-Capture (z. B. nur Strg+Alt gedrückt und losgelassen)
+    /// muss ebenfalls compound normalisiert werden.
+    #[test]
+    fn capture_modifier_only_wird_compound() {
+        let hotkey = Hotkey::new(
+            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT),
+            None,
+        )
+        .unwrap();
+        assert_eq!(hotkey.to_handy_string(), "ctrl+alt");
+        // Als Muster „ctrl+alt" muss das gemischte Seiten-Event (links Strg,
+        // rechts Alt) genauso matchen wie die Reinform rechts+rechts.
+        let round: Hotkey = hotkey.to_handy_string().parse().unwrap();
+        assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT));
+        assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
+    }
 
     #[test]
     fn gueltige_kombinationen() {
@@ -325,7 +376,7 @@ fn capture_once() -> Option<String> {
                 // Taste dazwischen lag → die akkumulierten Modifier sind der
                 // Hotkey.
                 if !saw_key && !seen_modifiers.is_empty() {
-                    return Hotkey::new(seen_modifiers, None)
+                    return Hotkey::new(generalize_modifiers(seen_modifiers), None)
                         .ok()
                         .map(|h| h.to_handy_string());
                 }
@@ -336,7 +387,7 @@ fn capture_once() -> Option<String> {
                         return None;
                     }
                     saw_key = true;
-                    if let Ok(hotkey) = Hotkey::new(event.modifiers, key) {
+                    if let Ok(hotkey) = Hotkey::new(generalize_modifiers(event.modifiers), key) {
                         return Some(hotkey.to_handy_string());
                     }
                 } else {
@@ -346,4 +397,27 @@ fn capture_once() -> Option<String> {
             Err(_) => continue, // kurz vor Deadline — Schleifenkopf beendet rechtzeitig
         }
     }
+}
+
+/// Seitenspezifische Modifier (Strg links, Alt rechts, …) auf die Compound-
+/// Aliase zusammenziehen. Der Capture sieht je nach Tastatur immer nur die
+/// konkrete Seite; gespeichert werden soll aber „ctrl" (matched beide Seiten,
+/// wie die Defaults) — sonst würde z. B. rechte Strg beim Diktieren ins Leere
+/// laufen, und das Label zeigte „ctrl_left+alt_left+m".
+fn generalize_modifiers(m: Modifiers) -> Modifiers {
+    let mut out = Modifiers::empty();
+    for (left, right, compound) in [
+        (Modifiers::CMD_LEFT, Modifiers::CMD_RIGHT, Modifiers::CMD),
+        (Modifiers::SHIFT_LEFT, Modifiers::SHIFT_RIGHT, Modifiers::SHIFT),
+        (Modifiers::CTRL_LEFT, Modifiers::CTRL_RIGHT, Modifiers::CTRL),
+        (Modifiers::OPT_LEFT, Modifiers::OPT_RIGHT, Modifiers::OPT),
+    ] {
+        if m.intersects(left | right) {
+            out |= compound;
+        }
+    }
+    if m.contains(Modifiers::FN) {
+        out |= Modifiers::FN;
+    }
+    out
 }
