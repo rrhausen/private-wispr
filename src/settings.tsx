@@ -156,35 +156,89 @@ export default function SettingsPanel({
       .catch(() => setAutostart(false));
   }, []);
 
-  // Capture-Ergebnis einsammeln. Dependencies bewusst [capturing, hotkeys]:
-  // der Handler braucht den Stand zum Zeitpunkt des Tastendrucks. Ein laufender
-  // Capture wird beim Verlassen der Seite abgebrochen.
-  useEffect(() => {
-    const un = listen<{ hotkey: string | null }>("pw://hotkey-captured", (e) => {
-      setCapturing(null);
-      const captured = e.payload.hotkey;
-      if (captured === null) return;
-      void applyHotkeys(captured);
-    });
-    return () => {
-      void un.then((f) => f());
-      if (capturing) {
-        invoke("cancel_hotkey_capture").catch(() => {});
-      }
-    };
-  }, [capturing, hotkeys]);
-
-  // Während des Captures Tasten im Fenster schlucken (Space würde sonst
-  // Buttons klicken, Tab die Oberfläche bewegen).
+  // Key-Capture direkt im Fenster: Beim Klick auf „Ändern“ ist diese App
+  // fokussiert, die gedrückte Kombination kommt als normales KeyboardEvent
+  // hier an — unabhängig vom globalen Hook (dessen Installation eine
+  // Lotterie ist und der bei elevated Fenstern im Vordergrund gar keine
+  // Ereignisse sieht, UIPI). Verhaltensvorbild Epicenter/Whispering:
+  // preventDefault, Kleinbuchstaben, Fertig beim Loslassen, Esc bricht ab.
   useEffect(() => {
     if (!capturing) return;
-    const swallow = (e: KeyboardEvent) => {
+    const mods = new Set<string>();
+    let sawKey = false;
+    const MOD: Record<string, string> = {
+      Control: "ctrl",
+      Alt: "alt",
+      Shift: "shift",
+      Meta: "super",
+    };
+    // handy-keys-Schlüsselname: Einzelzeichen klein, F-Tasten klein,
+    // Leerstelle über code (e.key wäre " "). F24 ignorieren — der Hook-
+    // Selbsttest im Backend injiziert sie als Gesundheitscheck.
+    const keyName = (e: KeyboardEvent): string | null => {
+      if (e.key === "F24") return null;
+      if (e.key.length === 1 && e.key !== " ") return e.key.toLowerCase();
+      if (/^F\d{1,2}$/.test(e.key)) return e.key.toLowerCase();
+      if (e.code === "Space") return "space";
+      return null;
+    };
+    const finish = (combo: string | null) => {
+      cleanup();
+      setCapturing(null);
+      if (combo) void applyHotkeys(combo);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (e.repeat) return;
+      if (e.key === "Escape") return finish(null);
+      if (e.key in MOD) {
+        mods.add(MOD[e.key]);
+        return;
+      }
+      const key = keyName(e);
+      if (!key) return; // nicht darstellbare Taste (z. B. tot) — weiter lauschen
+      sawKey = true;
+      // Modifier-Flags direkt aus dem Event — sie sind auch dann korrekt,
+      // wenn Modifier schon vor dem Capture-Start gehalten wurden.
+      const held = [
+        e.ctrlKey ? "ctrl" : "",
+        e.altKey ? "alt" : "",
+        e.shiftKey ? "shift" : "",
+        e.metaKey ? "super" : "",
+      ].filter(Boolean);
+      finish([...held, key].join("+"));
     };
-    window.addEventListener("keydown", swallow, true);
-    return () => window.removeEventListener("keydown", swallow, true);
-  }, [capturing]);
+    const onKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (sawKey) return;
+      if (!(e.key in MOD)) return;
+      // Letzter Modifier losgelassen und keine echte Taste dazwischen →
+      // Modifier-only-Kombination (z. B. nur Strg+Alt).
+      if (
+        mods.size > 0 &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey &&
+        !e.metaKey
+      ) {
+        finish([...mods].join("+"));
+      }
+    };
+    const onBlur = () => finish(null);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", onBlur);
+    function cleanup() {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", onBlur);
+    }
+    return cleanup;
+    // applyHotkeys braucht capturing/hotkeys zum Zeitpunkt des Drucks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capturing, hotkeys]);
 
   // Modell-Download-Verlauf; einmaliges Abonnieren genügt.
   useEffect(() => {
@@ -217,7 +271,6 @@ export default function SettingsPanel({
   function startCapture(target: Exclude<CaptureTarget, null>) {
     setHotkeyError(null);
     setCapturing(target);
-    invoke("capture_hotkey").catch(console.error);
   }
 
   function hotkeyRow(target: Exclude<CaptureTarget, null>, title: string, subtitle: string, hotkey: string) {
@@ -230,10 +283,7 @@ export default function SettingsPanel({
         {capturing === target ? (
           <>
             <span className="kbd capturing">Taste drücken…</span>
-            <button
-              className="btn quiet"
-              onClick={() => invoke("cancel_hotkey_capture").catch(() => {})}
-            >
+            <button className="btn quiet" onClick={() => setCapturing(null)}>
               Abbrechen
             </button>
           </>
@@ -242,7 +292,7 @@ export default function SettingsPanel({
             <span className="kbd">{hotkeyLabel(hotkey)}</span>
             <button
               className="btn"
-              disabled={capturing !== null || !hookReady}
+              disabled={capturing !== null}
               onClick={() => startCapture(target)}
             >
               Ändern
@@ -415,16 +465,16 @@ export default function SettingsPanel({
           hotkeys.handoff,
         )}
         <span className="row-sub">
-          Gewünschte Kombination drücken — auch nur Modifier (z. B. Strg+Alt). Escape bricht
-          ab. Nackte Tasten ohne Modifier sind nicht erlaubt, weil sie in anderen Apps
-          blockiert wären.
+          Gewünschte Kombination direkt hier drücken (dieses Fenster bleibt fokussiert) — auch nur
+          Modifier (z. B. Strg+Alt). Escape bricht ab. Nackte Tasten ohne Modifier sind nicht
+          erlaubt, weil sie in anderen Apps blockiert wären.
         </span>
         {!hookReady && (
           <div className="notice" data-tone="error">
             <span className="notice-icon">⏳</span>
             <div>
-              Tastatur-Anbindung wird hergestellt… (bricht gelegentlich beim Start ab und wird
-              automatisch neu aufgebaut — einen Moment gedulden; Ändern ist gleich verfügbar.)
+              Tastatur-Anbindung fürs Diktat wird hergestellt… (wird automatisch neu aufgebaut,
+              einen Moment gedulden.)
             </div>
           </div>
         )}
