@@ -168,6 +168,12 @@ fn cancel_hotkey_capture() {
     hotkey::cancel_capture();
 }
 
+/// Ist der Tastatur-Hook verbunden? Änderungen via Event `pw://hook-status`.
+#[tauri::command]
+fn hook_status() -> bool {
+    hotkey::hook_ready()
+}
+
 /// Modell-Download starten; Fortschritt via `pw://model-download`.
 #[tauri::command]
 fn download_model(app: AppHandle) -> Result<(), String> {
@@ -241,6 +247,7 @@ pub fn run() {
             set_hotkeys,
             capture_hotkey,
             cancel_hotkey_capture,
+            hook_status,
             download_model,
             cancel_model_download
         ])

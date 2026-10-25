@@ -123,7 +123,23 @@ export default function SettingsPanel({
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState<CaptureTarget>(null);
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
+  const [hookReady, setHookReady] = useState(true);
   const [download, setDownload] = useState<DownloadEvent | null>(null);
+
+  // Tastatur-Hook-Status: Ändern ist erst möglich, wenn der Hook verbunden
+  // ist (Installation kann beim Start mehrfach fehlschlagen → Neuinstallation
+  // im Hintergrund, UI zeigt „wird verbunden").
+  useEffect(() => {
+    invoke<boolean>("hook_status")
+      .then(setHookReady)
+      .catch(() => {});
+    const un = listen<{ ready: boolean }>("pw://hook-status", (e) =>
+      setHookReady(e.payload.ready),
+    );
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
 
   useEffect(() => {
     invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null }>(
@@ -226,7 +242,7 @@ export default function SettingsPanel({
             <span className="kbd">{hotkeyLabel(hotkey)}</span>
             <button
               className="btn"
-              disabled={capturing !== null}
+              disabled={capturing !== null || !hookReady}
               onClick={() => startCapture(target)}
             >
               Ändern
@@ -403,6 +419,15 @@ export default function SettingsPanel({
           ab. Nackte Tasten ohne Modifier sind nicht erlaubt, weil sie in anderen Apps
           blockiert wären.
         </span>
+        {!hookReady && (
+          <div className="notice" data-tone="error">
+            <span className="notice-icon">⏳</span>
+            <div>
+              Tastatur-Anbindung wird hergestellt… (bricht gelegentlich beim Start ab und wird
+              automatisch neu aufgebaut — einen Moment gedulden; Ändern ist gleich verfügbar.)
+            </div>
+          </div>
+        )}
         {hotkeyError && (
           <div className="notice" data-tone="error">
             <span className="notice-icon">⚠</span>
