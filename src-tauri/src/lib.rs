@@ -354,6 +354,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
     let mic = state.mic.lock().unwrap().clone();
     let mut slot = state.recording.lock().unwrap();
     if slot.is_some() {
+        info!("PTT down ({mode:?}) ignoriert: Es läuft bereits eine Aufnahme");
         return;
     }
     info!("PTT down ({mode:?}): starte Aufnahme über {:?}", mic);
