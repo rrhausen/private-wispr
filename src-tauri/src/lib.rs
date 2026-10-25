@@ -11,6 +11,7 @@
 mod dictionary;
 mod feedback;
 mod fitting;
+mod focus;
 mod handoff;
 mod hotkey;
 mod model_download;
@@ -43,6 +44,9 @@ pub struct AppState {
     /// zwischen Diktaten geöffnet, damit der Anfang nicht verschluckt wird.
     /// Nach WARM_IDLE ohne Aufnahme wird er geschlossen.
     pub mic_warm: recording::WarmSlot,
+    /// Vordergrund-Fenster bei Aufnahmebeginn (Fokus-Check, specs 4.6, und
+    /// target_app für die Historie).
+    pub focus_at_start: Mutex<Option<focus::Snapshot>>,
 }
 
 /// Wie lange das Mikrofon nach dem letzten Diktat warm gehalten wird.
@@ -293,6 +297,7 @@ pub fn run() {
                 last_dictation: Arc::new(Mutex::new(None)),
                 mic: Arc::new(Mutex::new(initial.mic_device)),
                 mic_warm: Arc::new(Mutex::new(None)),
+                focus_at_start: Mutex::new(None),
             });
 
             // Engine im Hintergrund laden (Modell-Load dauert Sekunden).
@@ -501,6 +506,9 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         }
     };
     if let Some(active) = attempt {
+        // Fokus-Check (specs 4.6): Ziel-Fenster jetzt merken — beim
+        // Einfügen wird verglichen, ob es noch vorne steht.
+        *state.focus_at_start.lock().unwrap() = Some(focus::capture());
         *slot = Some(active);
         drop(slot);
         feedback::play_click_if_enabled();
@@ -517,6 +525,8 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
     let active = state.recording.lock().unwrap().take();
     let Some(active) = active else { return };
     let mode = active.mode;
+    // Fokus-Snapshot der Aufnahme mitnehmen (Cursor-Check + Historie-Ziel).
+    let focus_snap = state.focus_at_start.lock().unwrap().take();
 
     let stopped = match recording::stop(active) {
         Ok(stopped) => stopped,
@@ -576,10 +586,31 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
                 let (target, done_msg) = match mode {
                     OutputMode::Cursor => {
-                        if let Err(e) = paste::paste_text(&final_text) {
-                            warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
+                        // Fokus-Check (specs 4.6): Ein anderes Fenster vorne
+                        // heißt, Strg+V würde ins falsche Feld gehen — Text
+                        // nur in die Zwischenablage, mit klarer Meldung.
+                        let focus_ok =
+                            focus_snap.as_ref().map_or(true, |s| s.is_foreground());
+                        if focus_ok {
+                            if let Err(e) = paste::paste_text(&final_text) {
+                                warn!(
+                                    "Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage."
+                                );
+                            }
+                            ("Cursor".to_string(), None)
+                        } else {
+                            info!(
+                                "Fokus gewechselt (Ziel war {:?}) — Text in die Zwischenablage",
+                                focus_snap.and_then(|s| s.process.clone())
+                            );
+                            if let Err(e) = paste::copy_to_clipboard(&final_text) {
+                                error!("Zwischenablage fehlgeschlagen ({e:#})");
+                            }
+                            (
+                                "Zwischenablage (Fokus gewechselt)".to_string(),
+                                Some("→ Zwischenablage — Fokus gewechselt".to_string()),
+                            )
                         }
-                        ("Cursor".to_string(), None)
                     }
                     OutputMode::Handoff => {
                         let (target, ok) = match handoff::append(&final_text) {

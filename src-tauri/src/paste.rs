@@ -50,9 +50,17 @@ fn held_modifiers() -> Vec<&'static str> {
     held
 }
 
-pub fn paste_text(text: &str) -> Result<()> {
+/// Text nur in die Zwischenablage legen — Fokus-Wechsel-Fallback (specs
+/// 4.6): Ist beim Einfügen ein anderes Fenster vorne, kommt kein Strg+V
+/// ins falsche Feld.
+pub fn copy_to_clipboard(text: &str) -> Result<()> {
     let mut clipboard = arboard::Clipboard::new()?;
     clipboard.set_text(text.to_string())?;
+    Ok(())
+}
+
+pub fn paste_text(text: &str) -> Result<()> {
+    copy_to_clipboard(text)?;
 
     // Auf das physische Loslassen der Modifier warten (Handy-#2051-Muster,
     // eigenständig implementiert): direkt nach dem PTT-Loslassen können Alt/
