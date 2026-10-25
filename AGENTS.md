@@ -4,7 +4,9 @@ Dieses Repo wird maßgeblich mit AI-Coding-Agenten entwickelt. Diese Datei ist
 der verbindliche Einstieg. **Die Spezifikation ist die Wahrheit für Verhalten
 und Architektur:** [`specs/2026-10-24-private-wispr-spezifikation.md`](specs/2026-10-24-private-wispr-spezifikation.md)
 (inkl. Entscheidungs-Log am Ende — Entscheidungen dort nachlesen, nicht neu
-diskutieren).
+diskutieren). **[`STATUS.md`](STATUS.md) ist die Wahrheit für den
+Sprint-/Meilensteins-Fortschritt** — am Ende jedes Sprints aktualisieren,
+Git-Tag `m<Meilenstein>-sprint<n>` setzen, pushen.
 
 ## Projekt in einem Satz
 
