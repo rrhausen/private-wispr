@@ -259,9 +259,9 @@ fn run_hotkey_loop(app: AppHandle) {
                                 info!("Hook weiterhin taub (Versuch {failed_attempts}) — Neuinstallation läuft weiter");
                             }
                             listener = None; // Neuinstallation erzwingen
+                            connected = false; // zügige Prüfung des neuen Hooks
                             set_ready(false);
-                            reconnect_wait_until =
-                                Instant::now() + if connected { Duration::from_secs(2) } else { Duration::from_millis(250) };
+                            reconnect_wait_until = Instant::now() + Duration::from_millis(250);
                         }
                     }
                     probe_sent_at = None;

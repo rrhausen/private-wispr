@@ -5,6 +5,7 @@
 //! M0 ohne VAD (VAD-Policy folgt mit der Regel-Pipeline in M1).
 
 use std::io::BufWriter;
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -39,7 +40,25 @@ pub struct SpooledRecording {
     pub duration_secs: f64,
 }
 
-struct SpoolSink {
+/// Beendete Aufnahme plus dem zurückgegebenen Recorder: handy-recorder
+/// schließt das Gerät erst beim Drop — der Recorder kann also wiederverwendet
+/// („warm gehalten") werden, damit z. B. Bluetooth-Headsets zwischen Diktaten
+/// nicht trennen und beim nächsten Start die ersten Wörter verschlucken.
+pub struct StoppedRecording {
+    pub spooled: SpooledRecording,
+    pub recorder: Recorder<SpoolSink>,
+    /// EndReason::StopCalled (normales Ende) — nur dann wiederverwerten.
+    pub clean: bool,
+}
+
+/// Der geöffnete Recorder-Typ für das Warmhalten in AppState.
+pub type MicRecorder = Recorder<SpoolSink>;
+
+/// Warmhaltem-Slot: `(Recorder, zuletzt benutzt)`. Der Failure-Handler des
+/// Recorders leert den Slot, wenn das Gerät wegfällt.
+pub type WarmSlot = Arc<Mutex<Option<(MicRecorder, Instant)>>>;
+
+pub struct SpoolSink {
     writer: WavWriter<BufWriter<std::fs::File>>,
     wav_path: PathBuf,
     samples: Vec<f32>,
@@ -90,17 +109,98 @@ fn rms_level(frame: &[f32]) -> f32 {
     (sum / frame.len() as f32).sqrt().min(1.0)
 }
 
-fn open_recorder(device: Option<String>) -> Result<Recorder<SpoolSink>> {
+fn open_recorder(
+    device: Option<String>,
+    invalidated: Option<WarmSlot>,
+) -> Result<Recorder<SpoolSink>> {
     let config = RecorderConfig {
         device,
         channels: Channels::MixToMono,
         frames_per_chunk: None,
         ..RecorderConfig::speech()
     };
-    Recorder::open_with_failure_handler(config, |err| {
+    Recorder::open_with_failure_handler(config, move |err| {
         warn!("Recorder-Fehler: {err}");
+        // Gerät ist weg (z. B. Headset aus): ein warm gehaltener Recorder
+        // darf nicht wieder verwendet werden — Slot leeren. Während einer
+        // Aufnahme ist der Recorder gar nicht im Slot (No-op).
+        if let Some(slot) = &invalidated {
+            slot.lock().unwrap().take();
+        }
     })
     .context("Mikrofon konnte nicht geöffnet werden")
+}
+
+/// Mikrofon über die Fallback-Kette öffnen (ohne Aufnahme zu starten).
+/// `device`: gewählter Geräte-NAME (aus der UI); hier wird er auf die interne
+/// Geräte-ID aufgelöst, weil `RecorderConfig.device` die ID will.
+///
+/// Fallback-Kette (Blaupause Epicenter/Whispering-Verhalten, eigenständig
+/// implementiert): gewähltes Gerät → einmaliger Retry nach kurzer Pause
+/// (Bluetooth-HFP/SCO-Aufbau braucht Sekunden) → System-Standard → erstes
+/// aktives Eingabegerät. Jeder Fallback wird sichtbar geloggt.
+pub fn open_for_mic(
+    device: Option<String>,
+    invalidated: Option<WarmSlot>,
+) -> Result<(MicRecorder, bool)> {
+    let device_id = resolve_device_id(device.as_deref());
+    if device.is_some() && device_id.is_none() {
+        warn!(
+            "Gerät {:?} nicht in der Geräteliste gefunden; nutze Fallback-Kette",
+            device
+        );
+    }
+
+    // Versuch 1: gewähltes (oder aufgelöstes) Gerät.
+    if let Some(id) = device_id.clone() {
+        match open_recorder(Some(id), invalidated.clone()) {
+            Ok(recorder) => return Ok((recorder, false)),
+            Err(e) => {
+                warn!("Gerät '{device:?}' schlug fehl ({e:#}); Retry in 600 ms (Bluetooth-Aufbauzeit)");
+            }
+        }
+        // Versuch 2: kurze Pause, dann nochmals (HFP/SCO-Link-Aufbau).
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        match open_recorder(device_id, invalidated.clone()) {
+            Ok(recorder) => return Ok((recorder, false)),
+            Err(e) => warn!("Retry für '{device:?}' schlug fehl ({e:#}); Fallback auf System-Standard"),
+        }
+    }
+
+    // Versuch 3: System-Standard.
+    match open_recorder(None, invalidated.clone()) {
+        Ok(recorder) => {
+            warn!("Aufnahme über System-Standard (gewähltes Gerät nicht verfügbar)");
+            return Ok((recorder, true));
+        }
+        Err(e) => warn!("System-Standard schlug fehl ({e:#}); letzter Fallback: erstes aktives Gerät"),
+    }
+
+    // Versuch 4: erstes aktives Eingabegerät aus der Liste.
+    if let Some(first) = first_active_device_id() {
+        let recorder = open_recorder(Some(first), invalidated)
+            .context("Auch das erste aktive Eingabegerät konnte nicht geöffnet werden")?;
+        return Ok((recorder, true));
+    }
+    Err(anyhow::anyhow!("Kein Eingabegerät verfügbar"))
+}
+
+/// Aufnahme mit einem (neuen oder warm gehaltenen) Recorder starten.
+pub fn start_with(
+    app: &AppHandle,
+    recorder: MicRecorder,
+    used_fallback: bool,
+    mode: OutputMode,
+) -> Result<ActiveRecording> {
+    if used_fallback {
+        let _ = app.emit("pw://mic-fallback", ());
+    }
+    let sink = make_sink(Some(app.clone()))?;
+    let started = Instant::now();
+    recorder
+        .start(sink)
+        .map_err(|e| anyhow::anyhow!("Aufnahme-Start fehlgeschlagen: {}", e.error))?;
+    Ok(ActiveRecording { recorder, started, mode })
 }
 
 fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
@@ -128,74 +228,6 @@ fn make_sink(app: Option<AppHandle>) -> Result<SpoolSink> {
     })
 }
 
-/// Mikrofon öffnen und Aufnahme starten (on-demand wie Handy; Warm-State M1).
-/// `device`: gewählter Geräte-NAME (aus der UI); hier wird er auf die interne
-/// Geräte-ID aufgelöst, weil `RecorderConfig.device` die ID will.
-///
-/// Fallback-Kette (Blaupause Epicenter/Whispering-Verhalten, eigenständig
-/// implementiert): gewähltes Gerät → einmaliger Retry nach kurzer Pause
-/// (Bluetooth-HFP/SCO-Aufbau braucht Sekunden) → System-Standard → erstes
-/// aktives Eingabegerät. Jeder Fallback wird sichtbar geloggt.
-pub fn start(app: &AppHandle, device: Option<String>, mode: OutputMode) -> Result<ActiveRecording> {
-    let device_id = resolve_device_id(device.as_deref());
-    if device.is_some() && device_id.is_none() {
-        warn!(
-            "Gerät {:?} nicht in der Geräteliste gefunden; nutze Fallback-Kette",
-            device
-        );
-    }
-
-    // Versuch 1: gewähltes (oder aufgelöstes) Gerät.
-    if let Some(id) = device_id.clone() {
-        match open_recorder(Some(id)) {
-            Ok(recorder) => return finish_start(app, recorder, false, mode),
-            Err(e) => {
-                warn!("Gerät '{:?}' schlug fehl ({e:#}); Retry in 600 ms (Bluetooth-Aufbauzeit)", device);
-            }
-        }
-        // Versuch 2: kurze Pause, dann nochmals (HFP/SCO-Link-Aufbau).
-        std::thread::sleep(std::time::Duration::from_millis(600));
-        match open_recorder(device_id) {
-            Ok(recorder) => return finish_start(app, recorder, false, mode),
-            Err(e) => warn!("Retry für '{:?}' schlug fehl ({e:#}); Fallback auf System-Standard", device),
-        }
-    }
-
-    // Versuch 3: System-Standard.
-    match open_recorder(None) {
-        Ok(recorder) => {
-            warn!("Aufnahme über System-Standard (gewähltes Gerät nicht verfügbar)");
-            return finish_start(app, recorder, true, mode);
-        }
-        Err(e) => warn!("System-Standard schlug fehl ({e:#}); letzter Fallback: erstes aktives Gerät"),
-    }
-
-    // Versuch 4: erstes aktives Eingabegerät aus der Liste.
-    if let Some(first) = first_active_device_id() {
-        let recorder = open_recorder(Some(first))
-            .context("Auch das erste aktive Eingabegerät konnte nicht geöffnet werden")?;
-        return finish_start(app, recorder, true, mode);
-    }
-    Err(anyhow::anyhow!("Kein Eingabegerät verfügbar"))
-}
-
-fn finish_start(
-    app: &AppHandle,
-    recorder: Recorder<SpoolSink>,
-    used_fallback: bool,
-    mode: OutputMode,
-) -> Result<ActiveRecording> {
-    if used_fallback {
-        let _ = app.emit("pw://mic-fallback", ());
-    }
-    let sink = make_sink(Some(app.clone()))?;
-    let started = Instant::now();
-    recorder
-        .start(sink)
-        .map_err(|e| anyhow::anyhow!("Aufnahme-Start fehlgeschlagen: {}", e.error))?;
-    Ok(ActiveRecording { recorder, started, mode })
-}
-
 /// Namen aus der UI auf die interne Geräte-ID mappen.
 fn resolve_device_id(name: Option<&str>) -> Option<String> {
     name.and_then(|n| {
@@ -216,15 +248,21 @@ fn first_active_device_id() -> Option<String> {
         .and_then(|devices| devices.into_iter().find(|d| !d.is_monitor).map(|d| d.id))
 }
 
-/// Aufnahme beenden und das gespoolte Audio zurückgeben.
-pub fn stop(active: ActiveRecording) -> Result<SpooledRecording> {
+/// Aufnahme beenden und das gespoolte Audio zurückgeben; der Recorder bleibt
+/// geöffnet und kann warm gehalten werden (`clean` = normales Ende).
+pub fn stop(active: ActiveRecording) -> Result<StoppedRecording> {
     let stopped = active
         .recorder
         .stop()
         .context("Aufnahme konnte nicht gestoppt werden")?;
-    match &stopped.end_reason {
-        EndReason::StopCalled => {}
-        reason => warn!("Aufnahme endete unerwartet: {reason:?}"),
+    let clean = matches!(&stopped.end_reason, EndReason::StopCalled);
+    if !clean {
+        warn!("Aufnahme endete unerwartet: {:?} — Recorder wird verworfen", stopped.end_reason);
     }
-    stopped.sink.finish()
+    let spooled = stopped.sink.finish()?;
+    Ok(StoppedRecording {
+        spooled,
+        recorder: active.recorder,
+        clean,
+    })
 }

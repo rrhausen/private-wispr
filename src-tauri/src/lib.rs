@@ -37,7 +37,14 @@ pub struct AppState {
     pub last_dictation: Arc<Mutex<Option<stt::TranscriptResult>>>,
     /// Gewähltes Eingabegerät (Name); `None` = System-Standard.
     pub mic: Arc<Mutex<Option<String>>>,
+    /// Warm gehaltener Recorder: Das Gerät (v. a. Bluetooth-Headsets) bleibt
+    /// zwischen Diktaten geöffnet, damit der Anfang nicht verschluckt wird.
+    /// Nach WARM_IDLE ohne Aufnahme wird er geschlossen.
+    pub mic_warm: recording::WarmSlot,
 }
+
+/// Wie lange das Mikrofon nach dem letzten Diktat warm gehalten wird.
+const WARM_IDLE: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone, Serialize)]
 struct OverlayPayload {
@@ -95,6 +102,9 @@ fn list_devices() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn set_mic(app: AppHandle, state: tauri::State<AppState>, name: Option<String>) -> Result<(), String> {
+    // Gerätewechsel: ein warm gehaltener Recorder für das alte Gerät ist
+    // wertlos — schließen (Drop), damit z. B. das BT-Headset trennen kann.
+    drop(state.mic_warm.lock().unwrap().take());
     *state.mic.lock().unwrap() = name.clone();
     let mut settings = settings::load();
     settings.mic_device = name;
@@ -229,6 +239,7 @@ pub fn run() {
                 recording: Arc::new(Mutex::new(None)),
                 last_dictation: Arc::new(Mutex::new(None)),
                 mic: Arc::new(Mutex::new(initial.mic_device)),
+                mic_warm: Arc::new(Mutex::new(None)),
             });
 
             // Engine im Hintergrund laden (Modell-Load dauert Sekunden).
@@ -236,6 +247,31 @@ pub fn run() {
             std::thread::spawn(move || load_engine(&handle));
 
             hotkey::start(app.handle().clone())?;
+
+            // Warmhalte-Reaper: Mikrofon nach WARM_IDLE ohne Diktat schließen
+            // (sonst bliebe der Bluetooth-HFP-Link dauerhaft aktiv und
+            // verschlechtert z. B. Musikwiedergabe auf dem Headset).
+            {
+                let handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("pw-mic-warm-reaper".into())
+                    .spawn(move || loop {
+                        std::thread::sleep(Duration::from_secs(30));
+                        let state = handle.state::<AppState>();
+                        let expired = {
+                            let mut warm = state.mic_warm.lock().unwrap();
+                            match warm.as_ref() {
+                                Some((_, last)) if last.elapsed() > WARM_IDLE => warm.take(),
+                                _ => None,
+                            }
+                        };
+                        if expired.is_some() {
+                            log::info!("Mikrofon nach {WARM_IDLE:?} ohne Diktat geschlossen (Bluetooth trennt)");
+                        }
+                        // drop(expired) schließt das Gerät
+                    })
+                    .ok();
+            }
             setup_tray(app)?;
             info!("Private Wispr M1 gestartet (Hotkeys frei konfigurierbar in den Einstellungen)");
             Ok(())
@@ -357,23 +393,63 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         info!("PTT down ({mode:?}) ignoriert: Es läuft bereits eine Aufnahme");
         return;
     }
-    info!("PTT down ({mode:?}): starte Aufnahme über {:?}", mic);
-    match recording::start(app, mic, mode) {
-        Ok(active) => {
-            *slot = Some(active);
-            drop(slot);
-            feedback::play_click_if_enabled();
-            overlay_show(app);
-            overlay_emit(app, OverlayPayload { phase: "recording", message: None, level: None });
+    // Warm gehaltenen Recorder übernehmen (Gerät blieb offen), sonst über
+    // die Fallback-Kette neu öffnen. Schlägt der Warm-Start fehl, einmal
+    // frisch öffnen.
+    let warm = state.mic_warm.lock().unwrap().take();
+    let warm_was_some = warm.is_some();
+    let attempt = if let Some((recorder, _)) = warm {
+        info!("PTT down ({mode:?}): warmes Mikrofon sofort startbereit");
+        recording::start_with(app, recorder, false, mode)
+    } else {
+        info!("PTT down ({mode:?}): öffne Mikrofon ({:?})", mic.clone());
+        match recording::open_for_mic(mic.clone(), Some(state.mic_warm.clone())) {
+            Ok((recorder, used_fallback)) => {
+                recording::start_with(app, recorder, used_fallback, mode)
+            }
+            Err(e) => Err(e),
         }
-        Err(e) => {
+    };
+    let attempt = match attempt {
+        Ok(active) => Some(active),
+        Err(e) if !warm_was_some => {
             warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
             overlay_emit(
                 app,
                 OverlayPayload { phase: "error", message: Some(format!("Mikrofon: {e}")), level: None },
             );
             overlay_hide_later(app, Duration::from_secs(3));
+            None
         }
+        Err(e) => {
+            // Warm-Start schlug fehl — einmal frisch öffnen.
+            warn!("Warmes Mikrofon startet nicht ({e:#}) — öffne frisch");
+            let (recorder, used_fallback) =
+                match recording::open_for_mic(mic.clone(), Some(state.mic_warm.clone())) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
+                        overlay_emit(
+                            app,
+                            OverlayPayload {
+                                phase: "error",
+                                message: Some(format!("Mikrofon: {e}")),
+                                level: None,
+                            },
+                        );
+                        overlay_hide_later(app, Duration::from_secs(3));
+                        return;
+                    }
+                };
+            recording::start_with(app, recorder, used_fallback, mode).ok()
+        }
+    };
+    if let Some(active) = attempt {
+        *slot = Some(active);
+        drop(slot);
+        feedback::play_click_if_enabled();
+        overlay_show(app);
+        overlay_emit(app, OverlayPayload { phase: "recording", message: None, level: None });
     }
 }
 
@@ -386,8 +462,8 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
     let Some(active) = active else { return };
     let mode = active.mode;
 
-    let spooled = match recording::stop(active) {
-        Ok(spooled) => spooled,
+    let stopped = match recording::stop(active) {
+        Ok(stopped) => stopped,
         Err(e) => {
             warn!("Aufnahme-Stopp fehlgeschlagen: {e:#}");
             overlay_emit(
@@ -398,6 +474,13 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
             return;
         }
     };
+    // Sauberes Ende: Recorder warm halten (Gerät bleibt geöffnet, Bluetooth
+    // trennt nicht). Unsauberes Ende (Gerät weg): verwerfen = schließen.
+    if stopped.clean {
+        *state.mic_warm.lock().unwrap() =
+            Some((stopped.recorder, std::time::Instant::now()));
+    }
+    let spooled = stopped.spooled;
 
     if spooled.duration_secs < MIN_RECORDING_SECS {
         overlay_emit(app, OverlayPayload { phase: "done", message: Some("Zu kurz".into()), level: None });
