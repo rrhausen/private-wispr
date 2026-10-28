@@ -24,7 +24,34 @@ pub const MODEL_SHA256: &str = "5859f77944efcd8eafa23a6350731960b2b55b2203df51f3
 pub const MODEL_SIZE: u64 = 739_508_576;
 
 pub fn default_model_path() -> PathBuf {
-    models_dir().join(MODEL_FILE)
+    let candidates = model_candidates();
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .cloned()
+        // Kein Treffer: den Standard-Pfad melden (Download-Ziel + UI-Anzeige).
+        .unwrap_or_else(|| models_dir().join(MODEL_FILE))
+}
+
+/// Suchreihenfolge fürs Modell: neben der exe (`models\`-Unterordner und
+/// direkt — portabler Modus, die gguf einfach ins entpackte Verzeichnis
+/// legen), dann `%LOCALAPPDATA%\PrivateWispr\models\` (Standard, Ziel des
+/// In-App-Downloads). Exe-nah gewinnt bei Doppelung: die bewusst mitgegebene
+/// Datei schlägt die zentrale Ablage.
+fn model_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            out.extend(model_candidates_in(dir));
+        }
+    }
+    out.push(models_dir().join(MODEL_FILE));
+    out
+}
+
+/// Reine Variante von `model_candidates` für Unit-Tests.
+fn model_candidates_in(exe_dir: &std::path::Path) -> Vec<PathBuf> {
+    vec![exe_dir.join("models").join(MODEL_FILE), exe_dir.join(MODEL_FILE)]
 }
 
 pub fn models_dir() -> PathBuf {
@@ -127,5 +154,25 @@ impl Engine {
             language: transcript.language,
             transcription_ms: t0.elapsed().as_millis(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modell_kandidaten_neben_der_exe_und_zentral() {
+        let exe_dir = std::path::Path::new(r"C:\Tools\PrivateWispr");
+        assert_eq!(
+            model_candidates_in(exe_dir),
+            vec![
+                exe_dir.join("models").join(MODEL_FILE),
+                exe_dir.join(MODEL_FILE),
+            ]
+        );
+        // Die echte Kandidatenliste endet immer mit dem LOCALAPPDATA-Standard.
+        let candidates = model_candidates();
+        assert_eq!(candidates.last(), Some(&models_dir().join(MODEL_FILE)));
     }
 }

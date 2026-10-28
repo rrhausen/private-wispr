@@ -31,9 +31,10 @@ neben der exe liegen). Einstellungen und Modell liegen unabhängig davon unter
 
 **Modell ohne 705-MB-Download:** die Datei
 `parakeet-tdt-0.6b-v3-Q8_0.gguf` vom Quellrechner
-(`%LOCALAPPDATA%\PrivateWispr\models\`) auf den Zielrechner nach
-`%LOCALAPPDATA%\PrivateWispr\models\` kopieren — die App findet sie dort
-automatisch (SHA256 stimmt, gleiche Datei).
+(`%LOCALAPPDATA%\PrivateWispr\models\`) einfach **in den entpackten
+Programmordner legen** (neben `private-wispr.exe`) oder beim Zielrechner
+nach `%LOCALAPPDATA%\PrivateWispr\models\` kopieren — die App findet die
+Datei an beiden Orten automatisch (gleiche Datei, SHA256 stimmt).
 
 Hinweise für beide Varianten:
 

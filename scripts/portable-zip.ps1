@@ -29,10 +29,10 @@ Private Wispr $Version — portabel
    Der Ordner darf danach nicht mehr verschoben werden, wenn Autostart
    aktiviert wird.
 2) private-wispr.exe starten.
-3) Einstellungen -> Modell -> „Modell herunterladen" (705 MB, einmalig).
-   Schneller: die Datei parakeet-tdt-0.6b-v3-Q8_0.gguf vom Quellrechner
-   nach %LOCALAPPDATA%\PrivateWispr\models\ kopieren — dann entfällt der
-   Download.
+3) Modell: entweder die Datei parakeet-tdt-0.6b-v3-Q8_0.gguf einfach
+   in den entpackten Ordner legen (neben private-wispr.exe — wird
+   automatisch gefunden) oder über Einstellungen -> Modell herunterladen
+   (705 MB, landet dann unter %LOCALAPPDATA%\PrivateWispr\models\).
 
 Bedienung (Kurzform):
 - Strg+Alt+Leertaste halten, sprechen, loslassen -> Text am Cursor.
