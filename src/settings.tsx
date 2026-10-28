@@ -38,6 +38,8 @@ interface Props {
   modelPresent: boolean;
   engineReady: boolean;
   engineModel: string;
+  theme: "dark" | "light" | "system";
+  onThemeChange: (theme: "dark" | "light" | "system") => void;
 }
 
 type CaptureTarget = "cursor" | "handoff" | null;
@@ -125,6 +127,8 @@ export default function SettingsPanel({
   modelPresent,
   engineReady,
   engineModel,
+  theme,
+  onThemeChange,
 }: Props) {
   const [overlay, setOverlay] = useState(true);
   const [feedback, setFeedback] = useState(true);
@@ -616,6 +620,34 @@ export default function SettingsPanel({
       </Section>
 
       <Section head="Anzeige, Sound & Start">
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Farbschema</span>
+            <span className="row-sub">
+              „System" folgt der Windows-App-Darstellung; die Overlay-Pille
+              bleibt immer dunkel (liest sich über jeder App).
+            </span>
+          </div>
+        </div>
+        <div className="segmented">
+          {(
+            [
+              ["dark", "Dunkel"],
+              ["light", "Hell"],
+              ["system", "System"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              className={theme === value ? "segment active" : "segment"}
+              onClick={() => onThemeChange(value)}
+            >
+              <span className="check">{theme === value ? "✓" : ""}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="divider" />
         <SwitchRow
           title="Overlay-Pille während des Diktats"
           subtitle="Zustand am unteren Bildschirmrand, ohne Fokus zu rauben"

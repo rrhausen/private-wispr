@@ -88,12 +88,32 @@ function statusCapsule(engine: StatusInfo["engine"] | undefined) {
   return { tone: "busy", label: "Modell lädt" } as const;
 }
 
+export type Theme = "dark" | "light" | "system";
+
+/** Setzt das effektive Schema am <html>: „system" wird über die
+ *  prefers-color-scheme der Windows-App-Darstellung aufgelöst. */
+function applyTheme(theme: Theme) {
+  const effective =
+    theme === "system" && window.matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : theme === "system"
+        ? "dark"
+        : theme;
+  document.documentElement.dataset.theme = effective;
+  try {
+    localStorage.setItem("pw-theme", effective);
+  } catch {
+    /* Cache ist optional (Flash-Vermeidung beim Start). */
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState<"overview" | "settings">("overview");
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [last, setLast] = useState<LastEvent | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [theme, setTheme] = useState<Theme>("dark");
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
   const [handoffDir, setHandoffDir] = useState("");
@@ -137,6 +157,30 @@ export default function App() {
       void un3.then((f) => f());
     };
   }, []);
+
+  // Farbschema aus den Settings laden; im Modus „System" auf OS-Wechsel
+  // reagieren (auch zur Laufzeit, z. B. automatischer Wechsel abends).
+  useEffect(() => {
+    invoke<{ theme: string }>("get_settings")
+      .then((s) => {
+        const t = (["dark", "light", "system"] as const).includes(s.theme as Theme)
+          ? (s.theme as Theme)
+          : "dark";
+        setTheme(t);
+        applyTheme(t);
+      })
+      .catch(console.error);
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = () => applyTheme(theme);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [theme]);
+
+  function chooseTheme(t: Theme) {
+    setTheme(t);
+    applyTheme(t);
+    invoke("set_theme", { theme: t }).catch(console.error);
+  }
 
   useEffect(() => {
     invoke<StatusInfo>("status")
@@ -324,6 +368,8 @@ export default function App() {
           modelPresent={engine?.model_present ?? false}
           engineReady={engine?.ready ?? false}
           engineModel={engine?.model ?? ""}
+          theme={theme}
+          onThemeChange={chooseTheme}
         />
       )}
 

@@ -57,6 +57,10 @@ pub struct Settings {
     /// Historien-Aufbewahrung in Tagen (specs 4.8); 0 = unbegrenzt.
     #[serde(default = "default_history_retention_days")]
     pub history_retention_days: u64,
+    /// Farbschema der App: "dark" | "light" | "system" (Default dark —
+    /// das war bis M1 die einzige Welt).
+    #[serde(default = "default_theme")]
+    pub theme: String,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
 }
@@ -64,6 +68,12 @@ pub struct Settings {
 fn default_history_retention_days() -> u64 {
     90
 }
+
+fn default_theme() -> String {
+    "dark".into()
+}
+
+pub const THEMES: &[&str] = &["dark", "light", "system"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -73,6 +83,7 @@ impl Default for Settings {
             overlay_enabled: true,
             feedback_sound: true,
             history_retention_days: default_history_retention_days(),
+            theme: default_theme(),
             hotkeys: HotkeySettings::default(),
         }
     }
@@ -119,6 +130,7 @@ mod tests {
         assert_eq!(s.handoff_dir, None);
         assert!(s.overlay_enabled);
         assert_eq!(s.history_retention_days, 90);
+        assert_eq!(s.theme, "dark");
     }
 
     #[test]

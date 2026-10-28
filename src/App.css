@@ -3,8 +3,14 @@
  *
  * Eigenständige CSS-Umsetzung; Layout-Grammatik und Farbwelt sind als
  * Konzept-Blaupause von Blitztext abgeleitet (siehe NOTICE.md): eine ruhige
- * Nachtseite, Karten mit kleinem Sektionskopf darüber, genau ein Akzent
+ * Grundfläche, Karten mit kleinem Sektionskopf darüber, genau ein Akzent
  * (Lilac) für Aktionen und Auswahl, Public Sans, Kapsel-Buttons.
+ *
+ * Zwei Farbwelten über Tokens: Nacht (Default, :root) und Hell
+ * (:root[data-theme="light"], gesetzt aus dem Einstellungs-Tab; „System"
+ * löst das Frontend via prefers-color-scheme auf). Die Overlay-Pille lädt
+ * dieses Stylesheet ohne data-theme und bleibt bewusst immer dunkel — sie
+ * schwebt über beliebigen Apps und liest sich in beiden Modi.
  */
 
 :root {
@@ -15,14 +21,20 @@
   --tonal: rgba(187, 132, 223, 0.26); /* Auswahl / tonale Flächen */
   --on-tonal: #ffffff;
   --accent: #bb84df; /* Lilac-Akzent für Text, Icons, Auswahl */
+  --accent-soft: rgba(187, 132, 223, 0.4); /* Akzent-Linien */
+  --accent-soft-bg: rgba(187, 132, 223, 0.12); /* Akzent-Flächen (Notice) */
   --primary: #8337a8; /* gefüllte Haupt-Buttons */
   --primary-pressed: #5f287b;
   --success: #5bdfbd;
+  --success-glow: rgba(91, 223, 189, 0.7);
   --error: #d94c76;
+  --error-glow: rgba(217, 76, 118, 0.7);
+  --error-soft-bg: rgba(217, 76, 118, 0.14);
   --text: #f5f6fb;
   --muted: rgba(242, 244, 248, 0.55);
   --faint: rgba(242, 244, 248, 0.34);
   --border: rgba(255, 255, 255, 0.1);
+  --hover: rgba(255, 255, 255, 0.04);
   --radius-s: 8px;
   --radius-m: 12px;
   --radius-l: 16px;
@@ -34,6 +46,34 @@
   color: var(--text);
   background: transparent;
   font-size: 14px;
+}
+
+/* Helle Variante: gleiche Struktur, Lilac-Identität bleibt (dunklerer
+   Akzent für Kontrast auf weißen Karten). */
+:root[data-theme="light"] {
+  --page: #f6f4fb;
+  --card: #ffffff;
+  --card-edge: rgba(46, 24, 78, 0.1);
+  --inset: #f0ecf8;
+  --tonal: rgba(131, 55, 168, 0.14);
+  --on-tonal: #3a1750;
+  --accent: #8337a8;
+  --accent-soft: rgba(131, 55, 168, 0.35);
+  --accent-soft-bg: rgba(131, 55, 168, 0.08);
+  --primary: #8337a8;
+  --primary-pressed: #5f287b;
+  --success: #0c9b74;
+  --success-glow: rgba(12, 155, 116, 0.45);
+  --error: #c22e5c;
+  --error-glow: rgba(194, 46, 92, 0.45);
+  --error-soft-bg: rgba(194, 46, 92, 0.1);
+  --text: #2b2338;
+  --muted: rgba(43, 35, 56, 0.62);
+  --faint: rgba(43, 35, 56, 0.4);
+  --border: rgba(46, 24, 78, 0.14);
+  --hover: rgba(46, 24, 78, 0.05);
+
+  color-scheme: light;
 }
 
 body {
@@ -86,7 +126,7 @@ button {
   place-items: center;
   font-size: 16px;
   background: var(--tonal);
-  border: 1px solid rgba(187, 132, 223, 0.4);
+  border: 1px solid var(--accent-soft);
 }
 
 .brand-name {
@@ -124,12 +164,12 @@ button {
 
 .capsule[data-tone="ok"] .dot {
   background: var(--success);
-  box-shadow: 0 0 6px rgba(91, 223, 189, 0.7);
+  box-shadow: 0 0 6px var(--success-glow);
 }
 
 .capsule[data-tone="error"] .dot {
   background: var(--error);
-  box-shadow: 0 0 6px rgba(217, 76, 118, 0.7);
+  box-shadow: 0 0 6px var(--error-glow);
 }
 
 .capsule[data-tone="busy"] .dot {
@@ -372,7 +412,7 @@ button {
 
 .kbd.capturing {
   color: var(--accent);
-  border-color: rgba(187, 132, 223, 0.55);
+  border-color: var(--accent-soft);
   animation: pulse-dot 1s ease-in-out infinite;
 }
 
@@ -399,13 +439,13 @@ button {
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: var(--radius-m);
-  background: rgba(187, 132, 223, 0.12);
+  background: var(--accent-soft-bg);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .notice[data-tone="error"] {
-  background: rgba(217, 76, 118, 0.14);
+  background: var(--error-soft-bg);
 }
 
 .notice .notice-icon {
@@ -592,7 +632,7 @@ code.inline {
 }
 
 .hist-main:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .hist-snippet {

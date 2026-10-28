@@ -168,6 +168,17 @@ fn set_feedback_enabled(enabled: bool) -> Result<(), String> {
     settings::save(&settings).map_err(|e| e.to_string())
 }
 
+/// Farbschema setzen ("dark" | "light" | "system").
+#[tauri::command]
+fn set_theme(theme: String) -> Result<(), String> {
+    if !settings::THEMES.contains(&theme.as_str()) {
+        return Err(format!("Unbekanntes Farbschema: {theme}"));
+    }
+    let mut settings = settings::load();
+    settings.theme = theme;
+    settings::save(&settings).map_err(|e| e.to_string())
+}
+
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
 /// danach persistieren (bei Fehler bleibt die alte Belegung aktiv).
 #[tauri::command]
@@ -378,6 +389,7 @@ pub fn run() {
             set_handoff_dir,
             set_overlay_enabled,
             set_feedback_enabled,
+            set_theme,
             set_hotkeys,
             capture_hotkey,
             cancel_hotkey_capture,
