@@ -5,7 +5,7 @@ loslassen — der Text erscheint am Cursor.** Spracherkennung läuft vollständi
 lokal auf der GPU (transcribe.cpp, Vulkan); Audio und Transkripte verlassen
 diesen Rechner nie. Kein Account, keine Cloud, keine Telemetrie.
 
-![Status](https://img.shields.io/badge/Stand-M1_Sprint_1-8337A8) ![Plattform](https://img.shields.io/badge/Plattform-Windows_11-0078D4)
+![Status](https://img.shields.io/badge/Stand-M1_Sprint_2-8337A8) ![Plattform](https://img.shields.io/badge/Plattform-Windows_11-0078D4)
 
 ## Installation
 
@@ -13,20 +13,27 @@ diesen Rechner nie. Kein Account, keine Cloud, keine Telemetrie.
 
 1. Auf dem Entwicklungsrechner einmalig bauen (s. unten), dann den Installer aus
    `src-tauri\target\release\bundle\nsis\` auf den Ziel-Laptop kopieren:
-   `Private-Wispr_0.1.0_x64-setup.exe`
+   `Private Wispr_0.1.1_x64-setup.exe`
 2. Installer ausführen → installiert Startmenü-Eintrag + Deinstallation.
 3. App starten → in **Einstellungen → Modell** den „Modell herunterladen"-Button
    klicken (705 MB, SHA256-verifiziert, abbrechbar und fortsetzbar). Erst danach
    ist das Diktat bereit.
 
-### Variante B — portabel (exe + Engine-DLLs)
+### Variante B — portabel (ZIP: entpacken, starten, fertig)
 
 Alle `*.dll` **und** `private-wispr.exe` aus `src-tauri\target\release\` zusammen
-in einen Ordner auf den Ziel-Laptop kopieren und die exe direkt ausführen —
-keine Installation nötig (UI-Assets sind eingebettet, aber die Engine-Backends
-— `ggml-vulkan.dll`, CPU-Varianten, `transcribe.dll` — müssen neben der exe
-liegen). Einstellungen und Modell liegen unabhängig davon unter
+in einen Ordner kopieren (auf dem Dev-Rechner liegt fertiges ZIP unter
+`src-tauri\target\release\bundle\`, s. u.) und die exe direkt ausführen —
+keine Installation, kein Registry-Eintrag (UI-Assets sind eingebettet, aber die
+Engine-Backends — `ggml-vulkan.dll`, CPU-Varianten, `transcribe.dll` — müssen
+neben der exe liegen). Einstellungen und Modell liegen unabhängig davon unter
 `%LOCALAPPDATA%\PrivateWispr\`.
+
+**Modell ohne 705-MB-Download:** die Datei
+`parakeet-tdt-0.6b-v3-Q8_0.gguf` vom Quellrechner
+(`%LOCALAPPDATA%\PrivateWispr\models\`) auf den Zielrechner nach
+`%LOCALAPPDATA%\PrivateWispr\models\` kopieren — die App findet sie dort
+automatisch (SHA256 stimmt, gleiche Datei).
 
 Hinweise für beide Varianten:
 
@@ -60,9 +67,21 @@ Hinweise für beide Varianten:
   blockt dort injiziertes Strg+V (UIPI), Dateien gehen aber immer.
 - **Mikrofon**: Gerät wählen; Bluetooth-Headsets mit Aufbau-Pause und
   Fallback-Kette (Gerät → Retry → System-Standard → erstes aktives Gerät).
+- **Wörterbuch** (Sprint 2): YAML-Regeln mit Aliasen und Profilen unter
+  `%APPDATA%\PrivateWispr\dictionary\` — Fachbegriffe (z. B. „Share Point" →
+  „SharePoint") werden korrigiert und fließen in die Erkennung ein; Ordner
+  per Button öffnen, Profile umschalten.
 - **Modell**: Download mit Fortschritt, Abbruch/Resume und SHA256-Prüfung in der App.
 - **Overlay-Pille** (Zustand am unteren Bildschirmrand), **Start-Klick** und
   **Autostart** ein-/ausschaltbar.
+
+**Nachvollziehbarkeit** (Sprint 2): Jedes Diktat landet mit Rohtranskript,
+Endtext und angewandten Wörterbuch-Regeln in der Historie
+(`%APPDATA%\PrivateWispr\history.db`, Aufbewahrung 90 Tage) — Übersicht zeigt
+die letzten Diktate, Klick kopiert. Audio wird nach der Transkription
+gelöscht. Wechselt der Fensterfokus während der Aufnahme, geht der Text
+sicherheitshalber in die Zwischenablage statt ins falsche Fenster (Meldung
+erscheint).
 
 **Bekannte Grenze:** Bei Fokus auf Fenstern mit Admin-Rechten (elevated)
 bekommt die App keine Tastaturereignisse (Windows UIPI) — in normalen Fenstern
