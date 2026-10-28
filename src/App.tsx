@@ -76,6 +76,12 @@ interface LastEvent {
   target: string;
 }
 
+interface UpgradePlan {
+  installed_version: string;
+  own_version: string;
+  install_dir: string;
+}
+
 function statusCapsule(engine: StatusInfo["engine"] | undefined) {
   if (!engine) return { tone: "busy", label: "Status…" } as const;
   if (engine.ready) {
@@ -118,6 +124,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>("dark");
   /** Effektives Schema („system" aufgelöst) — steuert Sonne/Mond-Knopf. */
   const [isLight, setIsLight] = useState(false);
+  const [upgrade, setUpgrade] = useState<UpgradePlan | null>(null);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
   const [handoffDir, setHandoffDir] = useState("");
@@ -179,6 +187,29 @@ export default function App() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
+
+  // Ältere Installation auf diesem Rechner? (Portable Kopie einer neueren
+  // Version gestartet → sauberes In-Place-Upgrade anbieten, kein Auto-
+  // Update im Hintergrund.)
+  useEffect(() => {
+    invoke<UpgradePlan | null>("upgrade_status")
+      .then(setUpgrade)
+      .catch(() => {});
+  }, []);
+
+  function runUpgrade() {
+    if (!upgrade) return;
+    setUpgradeMsg(null);
+    invoke<{ copied_files: number; install_dir: string }>("apply_upgrade", { plan: upgrade })
+      .then((r) => {
+        setUpgrade(null);
+        setUpgradeMsg(
+          `Installation aktualisiert auf ${upgrade.own_version} (${r.copied_files} Dateien nach ${r.install_dir}). ` +
+            "Einstellungen, Modell und Historie sind unberührt geblieben.",
+        );
+      })
+      .catch((e) => setUpgradeMsg(String(e)));
+  }
 
   function chooseTheme(t: Theme) {
     setTheme(t);
@@ -268,6 +299,46 @@ export default function App() {
 
       {tab === "overview" ? (
         <>
+          {(upgrade || upgradeMsg) && (
+            <section className="section">
+              <div className="section-head">Update</div>
+              <div className="card">
+                {upgrade ? (
+                  <>
+                    <div className="notice">
+                      <span className="notice-icon">⬆</span>
+                      <div>
+                        <strong>
+                          Installation {upgrade.installed_version} erkannt.
+                        </strong>{" "}
+                        Diese Kopie ist {upgrade.own_version} — soll die
+                        bestehende Installation aktualisiert werden?
+                        <br />
+                        <span className="row-sub">
+                          Ziel: <code className="inline">{upgrade.install_dir}</code> · Einstellungen,
+                          Modell und Historie bleiben unberührt.
+                        </span>
+                      </div>
+                    </div>
+                    <div className="row-line">
+                      <span className="row-sub">
+                        Die laufende Private-Wispr-Instanz vorher über das Tray beenden.
+                      </span>
+                      <button className="btn primary" onClick={runUpgrade}>
+                        Upgrade installieren
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="notice">
+                    <span className="notice-icon">✓</span>
+                    <div>{upgradeMsg}</div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           <section className="section">
             <div className="section-head">Spracherkennung</div>
             <div className="card">

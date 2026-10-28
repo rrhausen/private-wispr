@@ -21,6 +21,7 @@ mod recording;
 pub mod selftest;
 mod settings;
 mod stt;
+mod upgrade;
 
 pub use recording::OutputMode;
 
@@ -292,6 +293,21 @@ fn copy_text(text: String) -> Result<(), String> {
     paste::copy_to_clipboard(&text).map_err(|e| e.to_string())
 }
 
+// ─── Upgrade erkannter Installationen (specs 4.10: kein Auto-Update) ────
+
+/// Upgrade-Plan, falls eine ältere Installation existiert und wir als
+/// portable Kopie einer neueren Version laufen.
+#[tauri::command]
+fn upgrade_status() -> Option<upgrade::UpgradePlan> {
+    upgrade::detect()
+}
+
+/// Das angebotene Upgrade ausführen (Dateien + Registry-Version).
+#[tauri::command]
+fn apply_upgrade(plan: upgrade::UpgradePlan) -> Result<upgrade::UpgradeReport, String> {
+    upgrade::apply(&plan).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -402,7 +418,9 @@ pub fn run() {
             history_list,
             history_delete,
             history_clear,
-            copy_text
+            copy_text,
+            upgrade_status,
+            apply_upgrade
         ])
         .run(tauri::generate_context!())
         .expect("Fehler beim Starten der Tauri-Anwendung");

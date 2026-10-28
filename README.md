@@ -38,6 +38,14 @@ Datei an beiden Orten automatisch (gleiche Datei, SHA256 stimmt).
 
 Hinweise für beide Varianten:
 
+- **Update einer bestehenden Installation:** einfach die setup.exe der neuen
+  Version ausführen (ersetzt die alte an Ort und Stelle) — oder die portable
+  exe der neueren Version starten: Die App erkennt die Installation im
+  Hintergrund und bietet in der Übersicht ein sauberes In-Place-Upgrade an
+  (Programmdateien + Registry-Version; Einstellungen/Modell/Historie bleiben
+  unberührt). Läuft die installierte Instanz noch, vorher über das Tray
+  beenden. Per-Machine-Installationen (Admin) upgradet die setup.exe.
+
 - **Windows 11** mit WebView2 (ab Werk vorhanden) und einer **Vulkan-fähigen
   GPU** (NVIDIA/AMD/Intel ab ~Skylake; NVIDIA-Treiber bringt Vulkan mit).
   Ohne Vulkan läuft die Engine auf der CPU — deutlich langsamer, aber funktional.
