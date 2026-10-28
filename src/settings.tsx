@@ -61,6 +61,23 @@ const KEY_LABELS: Record<string, string> = {
   super: "Win",
   space: "Leertaste",
   escape: "Esc",
+  // Seitenspezifische Modifier (handy-keys-Formate, beide Namensfamilien)
+  lctrl: "Strg links",
+  rctrl: "Strg rechts",
+  ctrl_left: "Strg links",
+  ctrl_right: "Strg rechts",
+  lalt: "Alt links",
+  ralt: "Alt rechts",
+  alt_left: "Alt links",
+  alt_right: "Alt rechts",
+  lshift: "Shift links",
+  rshift: "Shift rechts",
+  shift_left: "Shift links",
+  shift_right: "Shift rechts",
+  lsuper: "Win links",
+  rsuper: "Win rechts",
+  super_left: "Win links",
+  super_right: "Win rechts",
 };
 
 /** handy-keys-String („ctrl+alt+space") als deutsche Anzeige („Strg+Alt+Leertaste"). */
@@ -203,15 +220,37 @@ export default function SettingsPanel({
   // Lotterie ist und der bei elevated Fenstern im Vordergrund gar keine
   // Ereignisse sieht, UIPI). Verhaltensvorbild Epicenter/Whispering:
   // preventDefault, Kleinbuchstaben, Fertig beim Loslassen, Esc bricht ab.
+  // Modifier werden SEITENSPEZIFISCH erfasst (e.code: „Strg rechts" ist als
+  // Diktattaste wertvoll, weil unbenutzt); Compound („Strg") greift nur,
+  // wenn die Seite unbekannt ist, z. B. bei vor Capture-Start gehaltenen
+  // Tasten. Backend-Format: lctrl/rctrl, lalt/ralt, … (handy-keys-Aliase).
   useEffect(() => {
     if (!capturing) return;
     const mods = new Set<string>();
     let sawKey = false;
-    const MOD: Record<string, string> = {
+    // e.key → Gruppe für die Boolean-Flags (ctrlKey & Co. kennen keine Seite).
+    const MOD_KEY_GROUP: Record<string, string> = {
       Control: "ctrl",
       Alt: "alt",
       Shift: "shift",
       Meta: "super",
+    };
+    // e.code → seitenspezifischer Modifier-Name (handy-keys-Format).
+    const MOD_CODE: Record<string, string> = {
+      ControlLeft: "lctrl",
+      ControlRight: "rctrl",
+      AltLeft: "lalt",
+      AltRight: "ralt",
+      ShiftLeft: "lshift",
+      ShiftRight: "rshift",
+      MetaLeft: "lsuper",
+      MetaRight: "rsuper",
+    };
+    const SIDES: Record<string, string[]> = {
+      ctrl: ["lctrl", "rctrl"],
+      alt: ["lalt", "ralt"],
+      shift: ["lshift", "rshift"],
+      super: ["lsuper", "rsuper"],
     };
     // handy-keys-Schlüsselname: Einzelzeichen klein, F-Tasten klein,
     // Leerstelle über code (e.key wäre " "). F24 ignorieren — der Hook-
@@ -223,6 +262,22 @@ export default function SettingsPanel({
       if (e.code === "Space") return "space";
       return null;
     };
+    // Gehaltene Modifier zum Zeitpunkt einer echten Taste: Seite aus den
+    // gesehenen keydowns, sonst Compound über die Boolean-Flags.
+    const heldModifiers = (e: KeyboardEvent): string[] => {
+      const held: string[] = [];
+      for (const [flag, group] of [
+        [e.ctrlKey, "ctrl"],
+        [e.altKey, "alt"],
+        [e.shiftKey, "shift"],
+        [e.metaKey, "super"],
+      ] as const) {
+        if (!flag) continue;
+        const sided = SIDES[group].find((m) => mods.has(m));
+        held.push(sided ?? group);
+      }
+      return held;
+    };
     const finish = (combo: string | null) => {
       cleanup();
       setCapturing(null);
@@ -233,30 +288,22 @@ export default function SettingsPanel({
       e.stopPropagation();
       if (e.repeat) return;
       if (e.key === "Escape") return finish(null);
-      if (e.key in MOD) {
-        mods.add(MOD[e.key]);
+      if (e.key in MOD_KEY_GROUP) {
+        mods.add(MOD_CODE[e.code] ?? MOD_KEY_GROUP[e.key]);
         return;
       }
       const key = keyName(e);
       if (!key) return; // nicht darstellbare Taste (z. B. tot) — weiter lauschen
       sawKey = true;
-      // Modifier-Flags direkt aus dem Event — sie sind auch dann korrekt,
-      // wenn Modifier schon vor dem Capture-Start gehalten wurden.
-      const held = [
-        e.ctrlKey ? "ctrl" : "",
-        e.altKey ? "alt" : "",
-        e.shiftKey ? "shift" : "",
-        e.metaKey ? "super" : "",
-      ].filter(Boolean);
-      finish([...held, key].join("+"));
+      finish([...heldModifiers(e), key].join("+"));
     };
     const onKeyUp = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (sawKey) return;
-      if (!(e.key in MOD)) return;
+      if (!(e.key in MOD_KEY_GROUP)) return;
       // Letzter Modifier losgelassen und keine echte Taste dazwischen →
-      // Modifier-only-Kombination (z. B. nur Strg+Alt).
+      // Modifier-only-Kombination (Seiten stehen im mods-Set).
       if (
         mods.size > 0 &&
         !e.ctrlKey &&
@@ -508,7 +555,9 @@ export default function SettingsPanel({
         <span className="row-sub">
           Gewünschte Kombination direkt hier drücken (dieses Fenster bleibt fokussiert) — auch nur
           Modifier (z. B. Strg+Alt). Escape bricht ab. Nackte Tasten ohne Modifier sind nicht
-          erlaubt, weil sie in anderen Apps blockiert wären.
+          erlaubt, weil sie in anderen Apps blockiert wären. Strg/Alt/Shift/Win links und rechts
+          werden unterschieden: „nur Strg rechts“ (Taste drücken und loslassen) ist ein bequemes
+          Ein-Tasten-Diktat, weil die rechte Strg beim Schreiben kaum benutzt wird.
         </span>
         {!hookReady && (
           <div className="notice" data-tone="error">

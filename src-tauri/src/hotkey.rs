@@ -516,14 +516,16 @@ impl CaptureEval {
 /// wieder losgelassen ergeben eine Modifier-only-Kombination (dafür werden
 /// die Modifier über alle key_down-Events akkumuliert, weil beim Loslassen
 /// der erste schon fehlt).
+///
+/// Seitenspezifisch: handy-keys liefert Strg/Alt/Shift/Win je als linke oder
+/// rechte Taste — die Seite wird bewusst erhalten („Strg rechts" ist als
+/// Diktattaste wertvoll, weil sie im Schreiballtag unbenutzt ist). Compound-
+/// Belegungen wie die Defaults („ctrl+alt+space") matchen weiterhin beide
+/// Seiten; nur neu gecapturete Kombis sind seitengebunden.
 fn capture_eval(st: &mut CaptureEval, ev: &KeyEvent) -> Option<Option<String>> {
     if !ev.is_key_down {
         if !st.saw_key && !st.seen_modifiers.is_empty() {
-            return Some(
-                Hotkey::new(generalize_modifiers(st.seen_modifiers), None)
-                    .ok()
-                    .map(|h| h.to_handy_string()),
-            );
+            return Some(Hotkey::new(st.seen_modifiers, None).ok().map(|h| h.to_handy_string()));
         }
         return None;
     }
@@ -532,40 +534,13 @@ fn capture_eval(st: &mut CaptureEval, ev: &KeyEvent) -> Option<Option<String>> {
             return Some(None);
         }
         st.saw_key = true;
-        if let Ok(hotkey) = Hotkey::new(generalize_modifiers(ev.modifiers), key) {
+        if let Ok(hotkey) = Hotkey::new(ev.modifiers, key) {
             return Some(Some(hotkey.to_handy_string()));
         }
         return None;
     }
     st.seen_modifiers |= ev.modifiers;
     None
-}
-
-/// Seitenspezifische Modifier (Strg links, Alt rechts, …) auf die Compound-
-/// Aliase zusammenziehen. Der Capture sieht je nach Tastatur immer nur die
-/// konkrete Seite; gespeichert werden soll aber „ctrl" (matched beide Seiten,
-/// wie die Defaults) — sonst würde z. B. rechte Strg beim Diktieren ins Leere
-/// laufen, und das Label zeigte „ctrl_left+alt_left+m".
-fn generalize_modifiers(m: Modifiers) -> Modifiers {
-    let mut out = Modifiers::empty();
-    for (left, right, compound) in [
-        (Modifiers::CMD_LEFT, Modifiers::CMD_RIGHT, Modifiers::CMD),
-        (
-            Modifiers::SHIFT_LEFT,
-            Modifiers::SHIFT_RIGHT,
-            Modifiers::SHIFT,
-        ),
-        (Modifiers::CTRL_LEFT, Modifiers::CTRL_RIGHT, Modifiers::CTRL),
-        (Modifiers::OPT_LEFT, Modifiers::OPT_RIGHT, Modifiers::OPT),
-    ] {
-        if m.intersects(left | right) {
-            out |= compound;
-        }
-    }
-    if m.contains(Modifiers::FN) {
-        out |= Modifiers::FN;
-    }
-    out
 }
 
 /// Key-Capture starten (asynchron): Ergebnis via Event `pw://hotkey-captured`,
@@ -618,49 +593,103 @@ mod tests {
         vec![(hotkey.parse().unwrap(), mode)]
     }
 
-    /// Repro für den Capture-Bug vom 25.10.: Der Key-Capture sieht von
-    /// handy-keys stets seitenspezifische Modifier (CtrlLeft/OptLeft …). Der
-    /// zurückgegebene String muss daraus Compound-Modifier machen — sonst
-    /// matchte ein gespeichertes „ctrl_left+alt_left+m" nur auf die linke
-    /// Seite und das Label zeigte den Rohstring.
+    /// Der Capture sieht von handy-keys stets seitenspezifische Modifier
+    /// (CtrlLeft/OptLeft …) — die Seite wird bewusst erhalten, damit z. B.
+    /// „Strg rechts + Leertaste" als eigene Diktattaste belegt werden kann.
     #[test]
-    fn capture_normalisiert_seiten_modifikatoren() {
+    fn capture_behaelt_seiten_modifikatoren() {
         let mut st = CaptureEval::new();
-        // Modifer-Events (key=None) akkumulieren, dann Taste:
+        // Modifier-Events (key=None) akkumulieren, dann Taste:
         assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
         assert_eq!(
             capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, None)),
             None
         );
         let result = capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::M)));
-        assert_eq!(result, Some(Some("ctrl+alt+m".into())));
+        assert_eq!(result, Some(Some("ctrl_left+alt_left+m".into())));
     }
 
     #[test]
-    fn generalize_alle_gruppen() {
-        assert_eq!(generalize_modifiers(Modifiers::empty()), Modifiers::empty());
-        assert_eq!(generalize_modifiers(Modifiers::SHIFT_LEFT), Modifiers::SHIFT);
-        assert_eq!(generalize_modifiers(Modifiers::CMD_RIGHT), Modifiers::CMD);
-        assert_eq!(
-            generalize_modifiers(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT | Modifiers::FN),
-            Modifiers::CTRL | Modifiers::OPT | Modifiers::FN,
+    fn capture_rechte_strg_allein() {
+        // Nur rechte Strg gedrückt und losgelassen → Modifier-only „Strg rechts".
+        let mut st = CaptureEval::new();
+        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_RIGHT, None)), None);
+        let result = capture_eval(&mut st, &ev_up(Modifiers::CTRL_RIGHT, None));
+        assert_eq!(result, Some(Some("ctrl_right".into())));
+    }
+
+    /// Seitengebunden vs. Compound: „ctrl_right+space" matcht nur die rechte
+    /// Strg, „ctrl+alt" (Defaults-Stil) weiterhin beide Seiten.
+    #[test]
+    fn seitige_und_compound_muster_matchen_korrekt() {
+        let right: Hotkey = "ctrl_right+space".parse().unwrap();
+        assert!(right.modifiers.matches(Modifiers::CTRL_RIGHT));
+        assert!(!right.modifiers.matches(Modifiers::CTRL_LEFT));
+
+        // PTT-Kanten mit rechts: Down nur bei echter rechter Strg.
+        let active = active_single("ctrl_right+space", OutputMode::Cursor);
+        let mut pressed = Vec::new();
+        assert!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT, Some(Key::Space))).is_empty(),
+            "linke Strg darf nicht feuern"
         );
-        // Bereits compound Modifier bleiben unverändert.
-        assert_eq!(generalize_modifiers(Modifiers::CTRL), Modifiers::CTRL);
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_RIGHT, Some(Key::Space))),
+            vec![(OutputMode::Cursor, true)]
+        );
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_up(Modifiers::CTRL_RIGHT, Some(Key::Space))),
+            vec![(OutputMode::Cursor, false)]
+        );
+
+        // Modifier-only „nur rechte Strg" als PTT: Down beim Runterdrücken,
+        // Up beim Loslassen (nutzt die im Alltag unbenutzte Taste als
+        // Ein-Tasten-Diktat). Nach dem key_up ist kein Modifier mehr gesetzt.
+        let active = active_single("ctrl_right", OutputMode::Cursor);
+        let mut pressed = Vec::new();
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_RIGHT, None)),
+            vec![(OutputMode::Cursor, true)]
+        );
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_up(Modifiers::empty(), None)),
+            vec![(OutputMode::Cursor, false)]
+        );
+        // Linke Strg löst nichts aus — auch kein versehentliches Loslassen.
+        let mut pressed = Vec::new();
+        assert!(ptt_edges(&active, &mut pressed, &ev_down(Modifiers::CTRL_LEFT, None)).is_empty());
+        assert!(pressed.is_empty());
+        // Wird während der Aufnahme die linke statt der rechten Strg
+        // gehalten, zerfällt die Kombination → Up-Kante.
+        let mut pressed = vec![OutputMode::Cursor];
+        assert_eq!(
+            ptt_edges(&active, &mut pressed, &ev_up(Modifiers::CTRL_LEFT, None)),
+            vec![(OutputMode::Cursor, false)]
+        );
     }
 
-    /// Modifier-only-Capture (z. B. nur Strg+Alt gedrückt und losgelassen)
-    /// muss ebenfalls compound normalisiert werden.
     #[test]
-    fn capture_modifier_only_wird_compound() {
+    fn rctrl_ist_alias_fuer_ctrl_right() {
+        let short: Hotkey = "rctrl".parse().unwrap();
+        let long: Hotkey = "ctrl_right".parse().unwrap();
+        assert_eq!(short.to_handy_string(), long.to_handy_string());
+        assert!(validate("rctrl").is_ok());
+        assert!(validate("rctrl+space").is_ok());
+        assert!(validate("lalt+shift").is_ok());
+    }
+
+    /// Modifier-only-Capture bleibt parsebar; Compound-Belegungen (alte
+    /// Settings) matchen weiterhin gemischte Seiten.
+    #[test]
+    fn capture_modifier_only_und_compound_roundtrip() {
         let mut st = CaptureEval::new();
         assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
         assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT, None)), None);
         let result = capture_eval(&mut st, &ev_up(Modifiers::CTRL_LEFT, None));
-        assert_eq!(result, Some(Some("ctrl+alt".into())));
+        assert_eq!(result, Some(Some("ctrl_left+alt_right".into())));
 
-        // Als Muster „ctrl+alt" muss das gemischte Seiten-Event genauso
-        // matchen wie die Reinform rechts+rechts.
+        // Als Compound-Muster „ctrl+alt" (Form der Defaults) muss das
+        // gemischte Seiten-Event genauso matchen wie die Reinform rechts.
         let round: Hotkey = "ctrl+alt".parse().unwrap();
         assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT));
         assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
