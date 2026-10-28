@@ -90,9 +90,10 @@ function statusCapsule(engine: StatusInfo["engine"] | undefined) {
 
 export type Theme = "dark" | "light" | "system";
 
-/** Setzt das effektive Schema am <html>: „system" wird über die
- *  prefers-color-scheme der Windows-App-Darstellung aufgelöst. */
-function applyTheme(theme: Theme) {
+/** Setzt das effektive Schema am <html> („system" wird über die
+ *  prefers-color-scheme der Windows-App-Darstellung aufgelöst) und
+ *  liefert es zurück — Grundlage für den Sonne/Mond-Knopf. */
+function applyTheme(theme: Theme): "dark" | "light" {
   const effective =
     theme === "system" && window.matchMedia("(prefers-color-scheme: light)").matches
       ? "light"
@@ -105,6 +106,7 @@ function applyTheme(theme: Theme) {
   } catch {
     /* Cache ist optional (Flash-Vermeidung beim Start). */
   }
+  return effective;
 }
 
 export default function App() {
@@ -114,6 +116,8 @@ export default function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
+  /** Effektives Schema („system" aufgelöst) — steuert Sonne/Mond-Knopf. */
+  const [isLight, setIsLight] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string | null>(null);
   const [handoffDir, setHandoffDir] = useState("");
@@ -167,19 +171,25 @@ export default function App() {
           ? (s.theme as Theme)
           : "dark";
         setTheme(t);
-        applyTheme(t);
+        setIsLight(applyTheme(t) === "light");
       })
       .catch(console.error);
     const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const onChange = () => applyTheme(theme);
+    const onChange = () => setIsLight(applyTheme(theme) === "light");
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
 
   function chooseTheme(t: Theme) {
     setTheme(t);
-    applyTheme(t);
+    setIsLight(applyTheme(t) === "light");
     invoke("set_theme", { theme: t }).catch(console.error);
+  }
+
+  /** Schnell-Umschalter im Header: auf die jeweils andere Welt wechseln.
+   *  „System" wird dabei aufgelöst und zum konkreten Schema. */
+  function toggleTheme() {
+    chooseTheme(isLight ? "dark" : "light");
   }
 
   useEffect(() => {
@@ -222,10 +232,20 @@ export default function App() {
             <div className="brand-sub">Diktat, lokal auf diesem Rechner</div>
           </div>
         </div>
-        <span className="capsule" data-tone={capsule.tone} style={{ marginLeft: "auto" }}>
-          <span className="dot" />
-          {capsule.label}
-        </span>
+        <div className="header-side">
+          <span className="capsule" data-tone={capsule.tone}>
+            <span className="dot" />
+            {capsule.label}
+          </span>
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={isLight ? "Dunkler Modus" : "Heller Modus"}
+            aria-label="Farbschema umschalten"
+          >
+            {isLight ? "☀️" : "🌙"}
+          </button>
+        </div>
       </header>
 
       <nav className="segmented" role="tablist">
