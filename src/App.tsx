@@ -186,7 +186,8 @@ export default function App() {
     invoke("set_theme", { theme: t }).catch(console.error);
   }
 
-  /** Schnell-Umschalter im Header: auf die jeweils andere Welt wechseln.
+  /** Schnell-Umschalter im Header: Icon zeigt das Ziel des Klicks — im
+   *  dunklen Modus eine Sonne (Klick → hell), im hellen ein Mond.
    *  „System" wird dabei aufgelöst und zum konkreten Schema. */
   function toggleTheme() {
     chooseTheme(isLight ? "dark" : "light");
@@ -240,10 +241,10 @@ export default function App() {
           <button
             className="theme-toggle"
             onClick={toggleTheme}
-            title={isLight ? "Dunkler Modus" : "Heller Modus"}
+            title={isLight ? "Zum dunklen Modus wechseln" : "Zum hellen Modus wechseln"}
             aria-label="Farbschema umschalten"
           >
-            {isLight ? "☀️" : "🌙"}
+            {isLight ? "🌙" : "☀️"}
           </button>
         </div>
       </header>
