@@ -235,7 +235,9 @@ export default function SettingsPanel({
       Shift: "shift",
       Meta: "super",
     };
-    // e.code → seitenspezifischer Modifier-Name (handy-keys-Format).
+    // e.code → seitenspezifischer Modifier-Name (handy-keys-Format). e.code
+    // ist das verlässliche Signal: bei AltGr meldet die WebView e.key teils
+    // „Alt", teils „AltGraph" — der Code ist immer „AltRight".
     const MOD_CODE: Record<string, string> = {
       ControlLeft: "lctrl",
       ControlRight: "rctrl",
@@ -252,6 +254,16 @@ export default function SettingsPanel({
       shift: ["lshift", "rshift"],
       super: ["lsuper", "rsuper"],
     };
+    // Windows-AltGr (rechte Alt, dt. Layout) kommt als PAAR „linke Strg +
+    // rechte Alt" — die linke Strg ist ein Phantom ohne echte Taste. Zwei
+    // Signale: das Phantom-Control-keydown trifft auf gehaltenes Alt, und das
+    // AltRight-keydown räumt ein vorheriges lctrl aus mods. Sonst würde aus
+    // „nur Alt rechts" fälschlich „Strg links" (gesehen am 28.10.).
+    const isAltGrPhantomCtrlDown = (e: KeyboardEvent) =>
+      e.code === "ControlLeft" && e.altKey && !mods.has("lctrl");
+    const absorbAltGrPhantom = (e: KeyboardEvent) => {
+      if (e.code === "AltRight") mods.delete("lctrl");
+    };
     // handy-keys-Schlüsselname: Einzelzeichen klein, F-Tasten klein,
     // Leerstelle über code (e.key wäre " "). F24 ignorieren — der Hook-
     // Selbsttest im Backend injiziert sie als Gesundheitscheck.
@@ -263,7 +275,9 @@ export default function SettingsPanel({
       return null;
     };
     // Gehaltene Modifier zum Zeitpunkt einer echten Taste: Seite aus den
-    // gesehenen keydowns, sonst Compound über die Boolean-Flags.
+    // gesehenen keydowns, sonst Compound über die Boolean-Flags. Das
+    // AltGr-Phantom-LCtrl (ctrlKey=true ohne gesehenes lctrl neben ralt)
+    // wird nicht mitgezählt.
     const heldModifiers = (e: KeyboardEvent): string[] => {
       const held: string[] = [];
       for (const [flag, group] of [
@@ -273,6 +287,7 @@ export default function SettingsPanel({
         [e.metaKey, "super"],
       ] as const) {
         if (!flag) continue;
+        if (group === "ctrl" && mods.has("ralt") && !mods.has("lctrl")) continue;
         const sided = SIDES[group].find((m) => mods.has(m));
         held.push(sided ?? group);
       }
@@ -288,20 +303,29 @@ export default function SettingsPanel({
       e.stopPropagation();
       if (e.repeat) return;
       if (e.key === "Escape") return finish(null);
+      if (isAltGrPhantomCtrlDown(e)) return; // Windows-AltGr-Begleiter
+      const sidedMod = MOD_CODE[e.code];
+      if (sidedMod) {
+        absorbAltGrPhantom(e);
+        mods.add(sidedMod);
+        return;
+      }
       if (e.key in MOD_KEY_GROUP) {
-        mods.add(MOD_CODE[e.code] ?? MOD_KEY_GROUP[e.key]);
+        mods.add(MOD_KEY_GROUP[e.key]);
         return;
       }
       const key = keyName(e);
       if (!key) return; // nicht darstellbare Taste (z. B. tot) — weiter lauschen
       sawKey = true;
+      absorbAltGrPhantom(e);
       finish([...heldModifiers(e), key].join("+"));
     };
     const onKeyUp = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (sawKey) return;
-      if (!(e.key in MOD_KEY_GROUP)) return;
+      const isModifierUp = MOD_CODE[e.code] !== undefined || e.key in MOD_KEY_GROUP;
+      if (!isModifierUp) return;
       // Letzter Modifier losgelassen und keine echte Taste dazwischen →
       // Modifier-only-Kombination (Seiten stehen im mods-Set).
       if (
