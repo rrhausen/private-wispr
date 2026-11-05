@@ -211,13 +211,20 @@ fn update_display_version(version: &str) {
     log::warn!("DisplayVersion konnte nicht nachgezogen werden (Uninstall-Eintrag nicht schreibbar)");
 }
 
-/// Pfadvergleich ohne Groß-/Kleinschreibung und ohne trailing slash.
+/// Pfadvergleich: normalisiert (Groß-/Kleinschreibung, trailing slash) und
+/// zusätzlich über kanonische Pfade (löst auch 8.3-Kurznamen, Symlinks und
+/// verschiedene Schreibweisen des gleichen Ordners auf). Sonst erkennt die
+/// App nicht, dass sie selbst schon aus dem Installationsordner läuft, und
+/// bietet ein unmögliches Selbst-Upgrade an (gemeldet 05.11.).
 fn same_dir(a: &Path, b: &Path) -> bool {
-    let norm = |p: &Path| {
-        let s = p.to_string_lossy().trim_end_matches('\\').to_lowercase();
-        s
-    };
-    norm(a) == norm(b)
+    let norm = |p: &Path| p.to_string_lossy().trim_end_matches('\\').to_lowercase();
+    if norm(a) == norm(b) {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -249,5 +256,14 @@ mod tests {
             Path::new(r"c:\tools\privatewispr\")
         ));
         assert!(!same_dir(Path::new(r"C:\Tools\A"), Path::new(r"C:\Tools\B")));
+    }
+
+    #[test]
+    fn gleicher_ordner_ueber_kanonische_pfade() {
+        // Zwei Schreibweisen desselben realen Ordners (mit „."-Segment und
+        // relativ vs. absolut) — erst canonicalize gleicht sie ab.
+        let base = std::env::temp_dir();
+        let with_dot = base.join(r".\.\");
+        assert!(same_dir(&base, &with_dot));
     }
 }

@@ -320,6 +320,12 @@ export default function App() {
                         </span>
                       </div>
                     </div>
+                    {upgradeMsg && (
+                      <div className="notice" data-tone="error">
+                        <span className="notice-icon">⚠</span>
+                        <div>{upgradeMsg}</div>
+                      </div>
+                    )}
                     <div className="row-line">
                       <span className="row-sub">
                         Die laufende Private-Wispr-Instanz vorher über das Tray beenden.
