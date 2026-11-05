@@ -69,14 +69,14 @@ Nutzer offen (s. u.).
 - Spool-WAV: Löschung nach Transkription; bei Transkriptionsfehler bleibt
   es (Pfad geloggt) für Retry/Fehlersuche.
 
-### M1 Sprint 3 — Ausgabe-Stabilität ⏳ geplant
+### M1 Sprint 3 — Ausgabe-Stabilität 🔄 (3.1 fertig, 02.11.2026)
 
-| Feature | Spec | Hinweis |
-|---|---|---|
-| Paste-Transaktion (Delayed-Render, Read-Receipt, Clipboard-Restore, Terminal) | 4.6 | Eigenimplementierung nach paste_tx-Blaupause (IP-Direktive) |
-| Engine-Worker-Isolation (Supervisor-Muster) | 4.1 | Pflicht bevor weitere Features auf die Engine gehen |
-| Silero-VAD in der Aufnahme | 4.2 | mit Policy-Parametern |
-| Setup-Assistent erster Start (Mikro → Modell → Hotkey-Test) | 4.10 | Restaufgabe für M1-Abschluss |
+| Feature | Spec | Umsetzung | Headless |
+|---|---|---|---|
+| **3.1 Engine-Worker-Isolation** | 4.1 | ✅ `engine_worker.rs`: Kindprozess (`--engine-worker`), JSON-Protokoll über stdio + roher f32-Block; `SttEngine`-Trait (In-Process bleibt Selftest-Pfad); Supervisor startet nach Crash neu, Modell-Reload, Fehler sichtbar (kein stiller Retry) | ✅ 58 Unit + 1 E2E (echter Worker-Prozess, 2 s) |
+| Paste-Transaktion (Delayed-Render, Read-Receipt, Clipboard-Restore, Terminal) | 4.6 | ⏳ nächste — Eigenimplementierung nach paste_tx-Blaupause (IP-Direktive); aktiviert auch fitting::SeamContext mit echten Cursor-Zeichen |
+| Silero-VAD in der Aufnahme | 4.2 | ⏳ mit Policy-Parametern |
+| Setup-Assistent erster Start (Mikro → Modell → Hotkey-Test) | 4.10 | ⏳ Restaufgabe für M1-Abschluss |
 
 ## Wartet auf den Nutzer
 

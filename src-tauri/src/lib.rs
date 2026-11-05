@@ -9,6 +9,7 @@
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
 mod dictionary;
+pub mod engine_worker;
 mod feedback;
 mod fitting;
 mod focus;
@@ -20,10 +21,11 @@ mod paste;
 mod recording;
 pub mod selftest;
 mod settings;
-mod stt;
+pub mod stt;
 mod upgrade;
 
 pub use recording::OutputMode;
+use stt::SttEngine;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -36,7 +38,9 @@ use tauri::{AppHandle, Emitter, Manager};
 const MIN_RECORDING_SECS: f64 = 0.3;
 
 pub struct AppState {
-    pub engine: Arc<Mutex<Option<stt::Engine>>>,
+    /// Engine hinter dem SttEngine-Trait: im App-Betrieb der isolierte
+    /// Worker-Prozess (specs 4.1) — GPU-Faults killen nur den Worker.
+    pub engine: Arc<Mutex<Option<Box<dyn stt::SttEngine + Send>>>>,
     pub engine_info: Arc<Mutex<stt::EngineInfo>>,
     pub recording: Arc<Mutex<Option<recording::ActiveRecording>>>,
     pub last_dictation: Arc<Mutex<Option<stt::TranscriptResult>>>,
@@ -481,24 +485,26 @@ pub fn run() {
         .expect("Fehler beim Starten der Tauri-Anwendung");
 }
 
-/// Engine laden (beim Start und nach abgeschlossenem Modell-Download).
+/// Engine laden (beim Start und nach abgeschlossenem Modell-Download):
+/// isolierter Worker-Prozess mit Modell-Load; Fehler landen sichtbar in
+/// EngineInfo (kein stiller Fallback auf In-Process).
 pub(crate) fn load_engine(app: &AppHandle) {
-    match stt::Engine::load_default() {
+    match engine_worker::WorkerEngine::start_default() {
         Ok(engine) => {
             let mut info = engine.info().clone();
             info.loaded = true;
             info!(
-                "Engine bereit: {} auf {} ({})",
+                "Engine-Worker bereit: {} auf {} ({})",
                 info.model_name, info.device_or_default(), info.backend
             );
-            *app.state::<AppState>().engine.lock().unwrap() = Some(engine);
+            *app.state::<AppState>().engine.lock().unwrap() = Some(Box::new(engine));
             *app.state::<AppState>().engine_info.lock().unwrap() = info;
         }
         Err(e) => {
             let mut info = stt::EngineInfo::default();
             info.error = Some(e.to_string());
             *app.state::<AppState>().engine_info.lock().unwrap() = info;
-            error!("Engine-Load fehlgeschlagen: {e:#}");
+            error!("Engine-Worker-Start fehlgeschlagen: {e:#}");
         }
     }
     emit_status(app);

@@ -25,8 +25,13 @@ src-tauri/src/
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
                 WAV wird nach Transkription default gelöscht (specs 4.8)
-  stt.rs        Engine: transcribe.cpp (Parakeet TDT v3 Q8, Backend::Auto→Vulkan)
-                — transcribe() nimmt vocabulary-Feed aus dem Wörterbuch
+  stt.rs        SttEngine-Trait + In-Process-Engine: transcribe.cpp (Parakeet
+                TDT v3 Q8, Backend::Auto→Vulkan) — Selftest/Eval-Pfad;
+                transcribe() nimmt vocabulary-Feed aus dem Wörterbuch
+  engine_worker.rs Engine-Isolation (specs 4.1, App-Betrieb): eigener
+                Kindprozess (--engine-worker), JSON-Protokoll auf stdio +
+                roher f32-Sample-Block; Supervisor startet den Worker nach
+                Crash neu (GPU-Faults killen nur den Worker, Fehler sichtbar)
   dictionary.rs Wörterbuch-Pipeline (specs 4.5): YAML-Regeln+Aliase+Profile
                 in %APPDATA%\PrivateWispr\dictionary\, NFC, Filler-Entfernung,
                 längste Phrase zuerst, \p{L}-Wortgrenzen, Komposita-Toleranz
@@ -119,8 +124,9 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 
 ## Wichtigste bewusste Abweichungen/Offenpunkte (M0 → M1)
 
-1. **Engine läuft in-process** — Worker-Prozess-Isolation (Handy-Muster
-   `engine_supervisor`) ist M1-Pflicht, bevor Features auf die Engine gehen.
+1. ~~Engine läuft in-process~~ ✅ Sprint 3.1: isolierter Worker-Prozess
+   (`engine_worker.rs`, Supervisor mit Neustart); `SttEngine`-Trait hält die
+   Tür für ein CUDA-Sidecar offen.
 2. **Paste ist einfach** (kein Clipboard-Restore, keine Terminal-Erkennung,
    kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
    nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).

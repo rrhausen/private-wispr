@@ -61,7 +61,7 @@ pub fn models_dir() -> PathBuf {
         .join("models")
 }
 
-#[derive(Clone, Default, serde::Serialize)]
+#[derive(Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EngineInfo {
     pub loaded: bool,
     pub model_name: String,
@@ -77,11 +77,23 @@ impl EngineInfo {
     }
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct TranscriptResult {
     pub text: String,
     pub language: Option<String>,
     pub transcription_ms: u128,
+}
+
+/// Interne Engine-Schnittstelle (specs 4.1): Die App spricht nur mit diesem
+/// Trait. Implementierungen: `Engine` (in-process, Selftest/Eval) und
+/// `engine_worker::WorkerEngine` (isolation, App-Betrieb). Ein späteres
+/// CUDA-Sidecar dockt am selben Trait an, ohne Umbau.
+pub trait SttEngine {
+    /// 16-kHz-mono-f32-Samples transkribieren; `vocabulary` = Fachwörter aus
+    /// dem Wörterbuch (Biasing im Decode).
+    fn transcribe(&mut self, samples: &[f32], vocabulary: &[String])
+        -> anyhow::Result<TranscriptResult>;
+    fn info(&self) -> &EngineInfo;
 }
 
 pub struct Engine {
@@ -132,10 +144,10 @@ impl Engine {
         &self.info
     }
 
-    /// 16-kHz-mono-f32-Samples transkribieren. Sprache ist für M0 auf Deutsch
-    /// fixiert (Primärsprache laut specs); Auto-Detect folgt mit dem
-    /// Wörterbuch/M1. `vocabulary`: Fachwörter-Kanones aus dem Wörterbuch
-    /// (specs 4.5 — Biasing im Decode, soweit das Modell es unterstützt).
+    /// 16-kHz-mono-f32-Samples transkribieren. Sprache ist auf Deutsch
+    /// fixiert (Primärsprache laut specs); Auto-Detect folgt später.
+    /// `vocabulary`: Fachwörter-Kanones aus dem Wörterbuch (specs 4.5 —
+    /// Biasing im Decode, soweit das Modell es unterstützt).
     pub fn transcribe(&mut self, samples: &[f32], vocabulary: &[String]) -> Result<TranscriptResult> {
         let t0 = Instant::now();
         let options = RunOptions {
@@ -154,6 +166,21 @@ impl Engine {
             language: transcript.language,
             transcription_ms: t0.elapsed().as_millis(),
         })
+    }
+}
+
+impl SttEngine for Engine {
+    fn transcribe(
+        &mut self,
+        samples: &[f32],
+        vocabulary: &[String],
+    ) -> Result<TranscriptResult> {
+        // Ruft die gleichnamige inherent-Methode (inherent gewinnt).
+        Engine::transcribe(self, samples, vocabulary)
+    }
+
+    fn info(&self) -> &EngineInfo {
+        &self.info
     }
 }
 
