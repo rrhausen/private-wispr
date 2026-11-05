@@ -180,6 +180,60 @@ fn set_theme(theme: String) -> Result<(), String> {
     settings::save(&settings).map_err(|e| e.to_string())
 }
 
+/// Diktat-Audio aufbewahren statt nach der Transkription zu löschen
+/// (specs 4.8). Zum Einsammeln der Eval-Clips aus dem echten Betrieb.
+#[tauri::command]
+fn set_archive_audio(enabled: bool) -> Result<(), String> {
+    let mut settings = settings::load();
+    settings.archive_audio = enabled;
+    settings::save(&settings).map_err(|e| e.to_string())
+}
+
+/// Das Spool-WAV eines Diktats archivieren oder löschen. Archiv (wenn
+/// aktiviert): %APPDATA%\PrivateWispr\audio\JJJJ-MM-TT\HH-MM-SS <mode>.wav
+/// — verschieben statt kopieren, %TEMP% räumt sich sonst nie auf.
+fn dispose_spool_wav(wav_path: &std::path::Path, mode: OutputMode) {
+    if settings::load().archive_audio {
+        match archive_dir() {
+            Ok(dir) => {
+                let dest = dir.join(format!(
+                    "{} {}.wav",
+                    chrono::Local::now().format("%H-%M-%S"),
+                    match mode {
+                        OutputMode::Cursor => "cursor",
+                        OutputMode::Handoff => "handoff",
+                    }
+                ));
+                if std::fs::rename(wav_path, &dest).is_ok() {
+                    info!("Audio archiviert: {}", dest.display());
+                } else if let Err(e) = std::fs::copy(wav_path, &dest)
+                    .and_then(|_| std::fs::remove_file(wav_path))
+                {
+                    // Andere Laufwerke/Partitionen: rename geht nicht — kopieren.
+                    warn!("Audio nicht archivierbar ({e}): {}", wav_path.display());
+                } else {
+                    info!("Audio archiviert (kopiert): {}", dest.display());
+                }
+            }
+            Err(e) => warn!("Archiv-Ordner nicht anlegbar ({e}) — Audio bleibt: {}", wav_path.display()),
+        }
+        return;
+    }
+    if let Err(e) = std::fs::remove_file(wav_path) {
+        warn!("Spool-WAV nicht löschbar ({e}): {}", wav_path.display());
+    }
+}
+
+fn archive_dir() -> anyhow::Result<std::path::PathBuf> {
+    let dir = dirs::data_dir()
+        .ok_or_else(|| anyhow::anyhow!("APPDATA nicht ermittelbar"))?
+        .join("PrivateWispr")
+        .join("audio")
+        .join(chrono::Local::now().format("%Y-%m-%d").to_string());
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
 /// danach persistieren (bei Fehler bleibt die alte Belegung aktiv).
 #[tauri::command]
@@ -406,6 +460,7 @@ pub fn run() {
             set_overlay_enabled,
             set_feedback_enabled,
             set_theme,
+            set_archive_audio,
             set_hotkeys,
             capture_hotkey,
             cancel_hotkey_capture,
@@ -633,12 +688,9 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     spooled.duration_secs, result.transcription_ms, result.text
                 );
                 let info = engine.info().clone();
-                // Audio standardmäßig löschen (specs 4.8) — sofort nach der
-                // Transkription. (Bei Transkriptions-Fehlern bleibt das WAV
-                // für die Fehlersuche liegen, siehe Err-Zweig.)
-                if let Err(e) = std::fs::remove_file(&spooled.wav_path) {
-                    warn!("Spool-WAV nicht löschbar ({e}): {}", spooled.wav_path.display());
-                }
+                // Audio-Verwertung (specs 4.8): archivieren (Einstellung)
+                // oder direkt nach der Transkription löschen.
+                dispose_spool_wav(&spooled.wav_path, mode);
                 // Regel-Pipeline (specs 4.5/4.6): NFC → Filler → Phrasen-
                 // Regeln → Text-Fitting. Naht-Kontext (Zeichen am Cursor
                 // der Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
@@ -733,9 +785,14 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
             }
             Err(e) => {
                 error!("Transkription fehlgeschlagen: {e:#}");
-                // WAV bleibt für die Fehlersuche liegen (Audio wird sonst
-                // standardmäßig direkt nach der Transkription gelöscht).
-                warn!("Audio aufbewahrt für Retry: {}", spooled.wav_path.display());
+                // Fehlgeschlagene Diktate gelten ebenfalls der Archiv-Regel:
+                // aktiviert → ins Archiv (Fehlersuche/Retry), sonst liegt das
+                // WAV weiter in %TEMP% (Pfad im Log).
+                if settings::load().archive_audio {
+                    dispose_spool_wav(&spooled.wav_path, mode);
+                } else {
+                    warn!("Audio aufbewahrt für Retry: {}", spooled.wav_path.display());
+                }
                 overlay_emit(
                     &handle,
                     OverlayPayload { phase: "error", message: Some(e.to_string()), level: None },

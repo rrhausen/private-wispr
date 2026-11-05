@@ -57,6 +57,12 @@ pub struct Settings {
     /// Historien-Aufbewahrung in Tagen (specs 4.8); 0 = unbegrenzt.
     #[serde(default = "default_history_retention_days")]
     pub history_retention_days: u64,
+    /// Diktat-Audio aufbewahren statt nach der Transkription zu löschen
+    /// (specs 4.8: optionales Archiv; default aus). Landet unter
+    /// %APPDATA%\PrivateWispr\audio\JJJJ-MM-TT\ — u. a. zum Einsammeln der
+    /// Eval-Clips direkt aus dem echten Diktatbetrieb.
+    #[serde(default)]
+    pub archive_audio: bool,
     /// Farbschema der App: "dark" | "light" | "system" (Default dark —
     /// das war bis M1 die einzige Welt).
     #[serde(default = "default_theme")]
@@ -83,6 +89,7 @@ impl Default for Settings {
             overlay_enabled: true,
             feedback_sound: true,
             history_retention_days: default_history_retention_days(),
+            archive_audio: false,
             theme: default_theme(),
             hotkeys: HotkeySettings::default(),
         }
@@ -131,6 +138,7 @@ mod tests {
         assert!(s.overlay_enabled);
         assert_eq!(s.history_retention_days, 90);
         assert_eq!(s.theme, "dark");
+        assert!(!s.archive_audio);
     }
 
     #[test]

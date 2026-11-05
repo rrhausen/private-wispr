@@ -149,6 +149,7 @@ export default function SettingsPanel({
 }: Props) {
   const [overlay, setOverlay] = useState(true);
   const [feedback, setFeedback] = useState(true);
+  const [archiveAudio, setArchiveAudio] = useState(false);
   const [autostart, setAutostart] = useState(false);
   const [customHandoffDir, setCustomHandoffDir] = useState<string | null>(null);
   const [handoffError, setHandoffError] = useState<string | null>(null);
@@ -200,12 +201,13 @@ export default function SettingsPanel({
   }, []);
 
   useEffect(() => {
-    invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null }>(
+    invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null; archive_audio: boolean }>(
       "get_settings",
     )
       .then((s) => {
         setOverlay(s.overlay_enabled);
         setFeedback(s.feedback_sound);
+        setArchiveAudio(s.archive_audio);
         setCustomHandoffDir(s.handoff_dir);
       })
       .catch(console.error);
@@ -445,6 +447,11 @@ export default function SettingsPanel({
   function toggleFeedback(enabled: boolean) {
     setFeedback(enabled);
     invoke("set_feedback_enabled", { enabled }).catch(console.error);
+  }
+
+  function toggleArchiveAudio(enabled: boolean) {
+    setArchiveAudio(enabled);
+    invoke("set_archive_audio", { enabled }).catch(console.error);
   }
 
   async function toggleAutostart(enabled: boolean) {
@@ -733,6 +740,13 @@ export default function SettingsPanel({
           subtitle="Dezenter Doppelklick als Aufnahme-Bestätigung"
           checked={feedback}
           onChange={toggleFeedback}
+        />
+        <div className="divider" />
+        <SwitchRow
+          title="Diktat-Audio aufbewahren"
+          subtitle="Jedes Diktat landet als WAV unter %APPDATA%\PrivateWispr\audio\JJJJ-MM-TT\ — sonst wird Audio nach der Transkription gelöscht. Ideal zum Einsammeln von Eval-Clips aus dem echten Betrieb."
+          checked={archiveAudio}
+          onChange={toggleArchiveAudio}
         />
         <div className="divider" />
         <SwitchRow

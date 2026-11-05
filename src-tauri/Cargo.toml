@@ -1,6 +1,6 @@
 [package]
 name = "private-wispr"
-version = "0.1.3"
+version = "0.1.4"
 description = "Private Wispr — deutsch-first Diktat-App für Windows"
 authors = ["rrhausen"]
 edition = "2021"
