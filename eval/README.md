@@ -72,7 +72,9 @@ mit dem Katalog in M1/M2).
 |---|---|
 | Latenz Modell (transcription_ms, RTF) | ✅ M0 via `--selftest` |
 | Latenz E2E (Loslassen → eingefügt) | M1 (Hooks im PTT-Flow) |
-| WER gesamt | M1 (Ground-Truth-Diff) |
-| Fachbegriff-Trefferquote | M1 (mit Wörterbuch-Modul) |
-| Schädliche Fehlersetzungen | M1 (Regel-Diff gegen Ground-Truth) |
-| Parakeet-v3-Deutsch-EOS-Check | M1 (Clip 05 + Einzelsatz-Clips) |
+| WER gesamt (normalisiert, roh + final) | ✅ `--selftest <verzeichnis/>` (22.11.2026: 4,8% → **2,2%** nach Regel-Ableitung) |
+| Schädliche Fehlersetzungen | ✅ Ersetzungs-Topliste im Batch-Report |
+| Fachbegriff-Trefferquote | offen (aus Substitutionsliste ableitbar) |
+| Parakeet-v3-Deutsch-EOS-Check | ✅ 10,5-Minuten-Braindump ohne Abbruch, WER 1,2%, RTF 0,008 |
+
+Messreports liegen in `eval/reports/` (baseline/nach-regeln/final).
