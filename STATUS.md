@@ -4,7 +4,7 @@
 Pflege-Konvention (auch in AGENTS.md): Am Ende jedes Sprints diese Datei
 aktualisieren, einen Git-Tag `m<Meilenstein>-sprint<n>` setzen und pushen.
 
-Stand: **2026-10-25** · Head `4274fcf` (= origin/main) · Tags: `m0`, `m1-sprint1`, `m1-sprint2`
+Stand: **2026-11-22** (Sprint-3-Abschluss) · Tags: `m0`, `m1-sprint1`, `m1-sprint2`, `m1-sprint3`
 
 Legende: ✅ fertig & verifiziert · 🔄 in Arbeit · ⏳ geplant, nicht begonnen ·
 „GUI offen" = muss der Nutzer selbst testen (Mikrofon + Ohren), siehe jeweilige
@@ -15,7 +15,7 @@ Session-Handoff-Datei in `hand-off/` (lokal, nicht im Repo).
 | Meilenstein | Inhalt | Status |
 |---|---|---|
 | **M0 — Walking Skeleton** | E2E-Diktat, Vulkan-Engine, Overlay, Paste, Hand-off-Modus | ✅ fertig 24.10.2026 (Tag `m0`) |
-| **M1 — Produktkern** | Bedienbarkeit · Qualität/Nachvollziehbarkeit · Ausgabe-Stabilität | 🔄 Sprint 1+2 von 3 fertig |
+| **M1 — Produktkern** | Bedienbarkeit · Qualität/Nachvollziehbarkeit · Ausgabe-Stabilität | ✅ Sprint 1–3 implementiert (Tag `m1-sprint3`); GUI-Verifizierung durch Nutzer offen |
 | **M2 — Modi & Cloud** | Bereinigt-Modus (LLM), Prompt-Editor, OpenAI-kompat. Client | ⏳ |
 | **M3 — Lange Formate** | Datei-Import, lange Live-Aufnahmen, Zusammenfassungen | ⏳ |
 | v2-Backlog | Fuzzy (Kölner Phonetik), Auto-Lernen, Diarization, elevated Helper | ⏳ |
@@ -69,17 +69,21 @@ Nutzer offen (s. u.).
 - Spool-WAV: Löschung nach Transkription; bei Transkriptionsfehler bleibt
   es (Pfad geloggt) für Retry/Fehlersuche.
 
-### M1 Sprint 3 — Ausgabe-Stabilität 🔄 (3.1 + 3.2 + 3.3 fertig, 22.11.2026)
+### M1 Sprint 3 — Ausgabe-Stabilität ✅ implementiert (22.11.2026, Tag `m1-sprint3`)
 
 | Feature | Spec | Umsetzung | Headless |
 |---|---|---|---|
 | **3.1 Engine-Worker-Isolation** | 4.1 | ✅ `engine_worker.rs`: Kindprozess (`--engine-worker`), JSON-Protokoll über stdio + roher f32-Block; `SttEngine`-Trait (In-Process bleibt Selftest-Pfad); Supervisor startet nach Crash neu, Modell-Reload, Fehler sichtbar (kein stiller Retry) | ✅ 58 Unit + 1 E2E (echter Worker-Prozess, 2 s) |
 | **3.2 Paste-Transaktion** (Delayed-Render, Read-Receipt, Clipboard-Restore, Terminal) | 4.6 | ✅ `paste_tx.rs` (Eigenimplementierung nach paste_tx-Blaupause, IP-Direktive; ADR 0003): Snapshot → Delayed-Render + Opt-out-Marker → Chord → Lesebestätigung (erstes WM_RENDERFORMAT nach dem Chord) → Restore mit Sequenznummer-Guard; kein Receipt ⇒ „Einfügen nicht bestätigt", Text bleibt in der Zwischenablage (elevated läuft natürlich dort hin). Paste-Chord wählbar + Terminal-Erkennung (EXE-Liste). `seam.rs` liefert echte Cursor-Zeichen per UIA als SeamContext (nur Cursor-Modus; Selftest weiter none()) | ✅ 87 Unit + 1 E2E + 1 #[ignore]-Clipboard-Integration (gezielt, grün) |
-| Silero-VAD in der Aufnahme | 4.2 | ⏳ mit Policy-Parametern |
+| **3.4 Silero-VAD in der Aufnahme** | 4.2 | ✅ `vad.rs` (ADR 0004, gegrillt): Silero v6.2 in-process auf CPU hinter `SpeechAnalyzer`-Trait, lazy beim ersten Diktat; **Qualitätstor in `dictation::process`** — `NoSpeech` (kein Engine-Call, Halluzinations-Filter) + Zu-kurz-Gate auf Sprechzeit. **Bewusst ohne Sample-Trim**: Nachmessung BT700 (Release) zeigte 45 → 123/109/59 Fehler je Trim-Variante (Anlaufsilence = Encoder-Warm-up); Gates-only hält 45/2413 exakt, Transkripte bytengleich (`eval/reports/nach-vad-run.txt`). Kein Auto-Stop (Taste entscheidet), Parameter als Konstanten (Threshold 0,35, Pad 200 ms — konservativ für leise Diktate), modusunabhängig. Chunking (~30 s) auf M3 verschoben, Segment-Basis steht. Modell `silero-vad-v6.2-F32.gguf` mit Paketen verbreitet (Download-Skript + portable-ZIP/NSIS; fehlend ⇒ Gates offen, laut + `pw://status` sichtbar, nie blockierend). Selftest misst jetzt über den Engine-Worker wie die App | ✅ 101 Unit + 1 E2E; WER neu gemessen & unverändert (1,9 %/45/2413); GUI offen |
 | **3.3 Setup-Assistent erster Start** | 4.10 | ✅ `setup.rs` (Veteranen-Migration: Bestand + Modell ⇒ erledigt, nur echte Erststarts sehen den Assistenten) + `setup.tsx` (Willkommen → Mikro mit 5-s-Pegeltest → Modell → Diktat-Test als E2E-Finale → Fertig; „Später" ohne setup_done; Re-Entry „Einrichtung wiederholen" in den Einstellungen). Diktat-Pfad unberührt, WER unverändert | ✅ 93 Unit + 1 E2E (Migrations-Matrix); GUI offen |
 
 ## Wartet auf den Nutzer
 
+- **GUI-Verifizierung Sprint 3 (VAD):** Stille Aufnahme (nichts sprechen,
+  Taste kurz halten) → Pille „Keine Sprache erkannt"; normales Diktat
+  unverändert gut; ohne VAD-Modell (Datei testweise weg) startet das Diktat
+  trotzdem, UI zeigt VAD-Hinweis in der Spracherkennungs-Karte.
 - **Eval-Clips** (10–20, eigene Stimme, inkl. ≥10-Min-Brain-Dump +
   Fachbegriffssätze) → `eval/audio/` + `.txt` — Voraussetzung für
   WER-/Fachbegriff-Metriken; die exemplarischen Wörterbuch-Regeln sind

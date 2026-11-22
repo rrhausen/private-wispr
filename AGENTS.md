@@ -89,7 +89,14 @@ src-tauri/src/
                 settings.setup_done. UI in setup.tsx, Mikro-Test-Commands
                 (mic_test_start/stop, 5 s Auto-Stopp) in lib.rs
   selftest.rs   Headless `--selftest [wav|verzeichnis]` — Einzel-WAV oder
-                Batch mit WER gegen Ground-Truths (Eval-Harness)
+                Batch mit WER gegen Ground-Truths (Eval-Harness); ASR läuft
+                über den Engine-Worker wie in der App (ADR 0004)
+  vad.rs        Sprach-Aktivitätsprüfung (specs 4.2, ADR 0004): Silero in-
+                process auf CPU hinter SpeechAnalyzer-Trait, lazy beim ersten
+                Diktat; Qualitätstor in dictation::process (NoSpeech, Zu-kurz
+                auf Sprechzeit) — KEIN Sample-Trim (messbar schädlich für
+                Parakeet), Segmente als M3-Chunk-Basis erhalten. Modell:
+                silero-vad-v6.2-F32.gguf, mit den Paketen verbreitet
 src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
                 Übersicht: Letzte Diktate-Liste aus der Historie; App reicht
                 nur durch, was die Übersicht zeigt; rendert bis setup_done
@@ -105,10 +112,11 @@ src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
 
 **Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →
 Overlay „recording" → Released → `recording::stop` → Thread:
-`dictation::process` (stille Pipeline: transcribe + Regeln + Fitting +
-Audio-Politik) → Ausliefern: `deliver::plan` (reine Ziel-Entscheidung mit
-Fokus-Semantik) + `deliver::execute` (dünn: Zwischenablage/Strg+V/Hand-off,
-ehrlicher Bericht) → `history::insert` → Overlay „done".
+`dictation::process` (stille Pipeline: VAD-Qualitätstor → transcribe +
+Regeln + Fitting + Audio-Politik) → Ausliefern: `deliver::plan` (reine
+Ziel-Entscheidung mit Fokus-Semantik) + `deliver::execute` (dünn:
+Zwischenablage/Strg+V/Hand-off, ehrlicher Bericht) → `history::insert` →
+Overlay „done".
 Events: `pw://status`, `pw://overlay`,
 `pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hook-status`,
 `pw://model-download`, `pw://history-changed`.
@@ -142,8 +150,11 @@ bun run build
 **CMake** liegt portabel unter
 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Kitware.CMake_*\bin` — bei
 Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
-**Modell** liegt unter `%LOCALAPPDATA%\PrivateWispr\models\` (Download:
-`scripts/download-model.ps1`, 705 MB, SHA256-geprüft).
+**Modelle** liegen unter `%LOCALAPPDATA%\PrivateWispr\models\` (STT-Download:
+`scripts/download-model.ps1`, 705 MB; VAD-Download:
+`scripts/download-vad-model.ps1`, 1,2 MB — beide SHA256-geprüft; das
+VAD-Modell brauchen Bundles zwingend, `build.rs` spiegelt es nach
+`target/release`).
 
 ## Konventionen
 
@@ -183,7 +194,11 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
    kein Code übernommen); Details und abgelehnte Alternativen in ADR 0003.
    Noch offen aus specs 4.6: Paste-Chord pro App merken (statt nur Terminal-
    Liste) — Backlog.
-3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
+3. ~~**Kein VAD** in der Aufnahme~~ ✅ Sprint 3: Silero-VAD als Nachbearbeitungs-
+   Qualitätstor (ADR 0004: Gates ja, Sample-Trim nein — Kürzung verschlechterte
+   Parakeet messbar; Auto-Stop verworfen). Chunking an Sprechpausen (~30 s /
+   Max 40 / Min 5) bewusst auf M3 verschoben — Parakeet hat kein Fensterlimit,
+   die Silero-Segmentbasis steht bereit (specs 4.9 dockt dort an).
 4. **Aufnahmemodus je Hotkey fest verdrahtet:** Cursor = Halten, Hand-off =
    Toggle (Sprint 3.1+). Specs 4.3 sieht „Toggle"/„Hold-or-Toggle" als
    **wählbare** Modi vor — ein Setting dafür (auch pro Hotkey) folgt später.
@@ -196,8 +211,10 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 Ablauf, Clipliste und Aufnahme-Anleitung: [`eval/README.md`](eval/README.md).
 Stand: WER-Runner ✅ (`--selftest <ordner>`), BT700-Korpus gemessen
 (11 Clips, **WER final 1,9 %** nach Regel-Ableitung; Reports in
-`eval/reports/`). Offen: Fachbegriff-Quote als eigene Metrik. Der
-Headset-Vergleich über WL5024-Clips vom Arbeitslaptop ist vom Nutzer
+`eval/reports/`). Nach VAD-Einbau am 22.11. neu gemessen und unverändert
+bestätigt (45/2413, Transkripte bytengleich — Gates-only, s. ADR 0004 und
+`eval/reports/nach-vad-run.txt`). Offen: Fachbegriff-Quote als eigene Metrik.
+Der Headset-Vergleich über WL5024-Clips vom Arbeitslaptop ist vom Nutzer
 abgesagt (22.11.2026).
 
 ## Bekannte Issues
