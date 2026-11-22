@@ -52,16 +52,19 @@ fn held_modifiers() -> Vec<&'static str> {
 
 /// Text nur in die Zwischenablage legen — Fokus-Wechsel-Fallback (specs
 /// 4.6): Ist beim Einfügen ein anderes Fenster vorne, kommt kein Strg+V
-/// ins falsche Feld.
+/// ins falsche Feld. Auch der ehrliche Ablageort, wenn Hand-off oder
+/// Einfügen fehlschlagen (Fehlermodi in deliver.rs).
 pub fn copy_to_clipboard(text: &str) -> Result<()> {
     let mut clipboard = arboard::Clipboard::new()?;
     clipboard.set_text(text.to_string())?;
     Ok(())
 }
 
-pub fn paste_text(text: &str) -> Result<()> {
-    copy_to_clipboard(text)?;
-
+/// Strg+V injizieren: Die fokussierte App fügt aus der Zwischenablage ein.
+/// Das Kopieren muss der Aufrufer vorher erledigt haben — die Trennung
+/// macht den Fehlerfall benennbar: Schlägt nur dies hier, liegt der Text
+/// wenigstens in der Zwischenablage (deliver.rs meldet genau das).
+pub fn send_ctrl_v() -> Result<()> {
     // Auf das physische Loslassen der Modifier warten (Handy-#2051-Muster,
     // eigenständig implementiert): direkt nach dem PTT-Loslassen können Alt/
     // Strg noch unten sein, und aus dem injizierten Strg+V würde dann z. B.
@@ -97,4 +100,10 @@ pub fn paste_text(text: &str) -> Result<()> {
         sequence.len()
     );
     Ok(())
+}
+
+/// Kopieren und Strg+V in einem Schritt (Komfort-Kombination beider Teile).
+pub fn paste_text(text: &str) -> Result<()> {
+    copy_to_clipboard(text)?;
+    send_ctrl_v()
 }
