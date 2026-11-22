@@ -24,6 +24,14 @@ _Avoid_: Handoff-Datei-Modus, Ablage-Modus
 Der Vorgang, der den fertigen Text eines Diktats an sein Ziel bringt — am Cursor einfügen, in die Zwischenablage legen oder der Hand-off-Tagesdatei anhängen. Plant das Ziel als reine Entscheidung (inklusive Fokus-Semantik) und berichtet ehrlich, wohin der Text wirklich ging — auch im Fehlerfall.
 _Avoid_: Ausgabe (sagt nicht, wohin), Einfügen (ist nur das Cursor-Ziel)
 
+**Paste-Transaktion**:
+Das Einfügen am Cursor als Transaktion statt Feuer-und-vergessen: Die Zwischenablage wird per Delayed-Render nur *versprochen*, das Einfügen per Tastenkombination ausgelöst, das erste Lesen der Ziel-App bestätigt den Vorgang, und danach wird die ursprüngliche Zwischenablage des Nutzers wiederhergestellt. Bleibt die Bestätigung aus, bleibt der Text in der Zwischenablage (manuelles Einfügen möglich).
+_Avoid_: Auto-Paste (sagt nichts über die Transaktion), Clipboard-Trick
+
+**Lesebestätigung**:
+Das Signal, dass die Ziel-App die versprochene Zwischenablage tatsächlich gelesen hat (`WM_RENDERFORMAT` an den Verwalter der Paste-Transaktion) — der Moment, in dem das Einfügen wirklich stattfindet und das Wiederherstellen der alten Zwischenablage sicher werden kann. Erst Ab-senden der Tastenkombination zählende Bestätigungen verhindern, dass Clipboard-Manager eine falsche Bestätigung auslösen.
+_Avoid_: Read-Receipt (englisch), Bestätigung allein (zu unspezifisch)
+
 **Wörterbuch**:
 Die editierbare Regelsammlung, die erkannte Schreibweisen in kanonische überführt — Kanones wirken zusätzlich als Fachwortschatz in der Erkennung.
 _Avoid_: Ersetzungsliste, Fachwortschatz allein (ist nur eine Wirkung)
