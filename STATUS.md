@@ -69,14 +69,14 @@ Nutzer offen (s. u.).
 - Spool-WAV: Löschung nach Transkription; bei Transkriptionsfehler bleibt
   es (Pfad geloggt) für Retry/Fehlersuche.
 
-### M1 Sprint 3 — Ausgabe-Stabilität 🔄 (3.1 + 3.2 fertig, 22.11.2026)
+### M1 Sprint 3 — Ausgabe-Stabilität 🔄 (3.1 + 3.2 + 3.3 fertig, 22.11.2026)
 
 | Feature | Spec | Umsetzung | Headless |
 |---|---|---|---|
 | **3.1 Engine-Worker-Isolation** | 4.1 | ✅ `engine_worker.rs`: Kindprozess (`--engine-worker`), JSON-Protokoll über stdio + roher f32-Block; `SttEngine`-Trait (In-Process bleibt Selftest-Pfad); Supervisor startet nach Crash neu, Modell-Reload, Fehler sichtbar (kein stiller Retry) | ✅ 58 Unit + 1 E2E (echter Worker-Prozess, 2 s) |
 | **3.2 Paste-Transaktion** (Delayed-Render, Read-Receipt, Clipboard-Restore, Terminal) | 4.6 | ✅ `paste_tx.rs` (Eigenimplementierung nach paste_tx-Blaupause, IP-Direktive; ADR 0003): Snapshot → Delayed-Render + Opt-out-Marker → Chord → Lesebestätigung (erstes WM_RENDERFORMAT nach dem Chord) → Restore mit Sequenznummer-Guard; kein Receipt ⇒ „Einfügen nicht bestätigt", Text bleibt in der Zwischenablage (elevated läuft natürlich dort hin). Paste-Chord wählbar + Terminal-Erkennung (EXE-Liste). `seam.rs` liefert echte Cursor-Zeichen per UIA als SeamContext (nur Cursor-Modus; Selftest weiter none()) | ✅ 87 Unit + 1 E2E + 1 #[ignore]-Clipboard-Integration (gezielt, grün) |
 | Silero-VAD in der Aufnahme | 4.2 | ⏳ mit Policy-Parametern |
-| Setup-Assistent erster Start (Mikro → Modell → Hotkey-Test) | 4.10 | ⏳ Restaufgabe für M1-Abschluss |
+| **3.3 Setup-Assistent erster Start** | 4.10 | ✅ `setup.rs` (Veteranen-Migration: Bestand + Modell ⇒ erledigt, nur echte Erststarts sehen den Assistenten) + `setup.tsx` (Willkommen → Mikro mit 5-s-Pegeltest → Modell → Diktat-Test als E2E-Finale → Fertig; „Später" ohne setup_done; Re-Entry „Einrichtung wiederholen" in den Einstellungen). Diktat-Pfad unberührt, WER unverändert | ✅ 93 Unit + 1 E2E (Migrations-Matrix); GUI offen |
 
 ## Wartet auf den Nutzer
 

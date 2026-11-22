@@ -82,14 +82,24 @@ src-tauri/src/
                 erfolgreichem Schreiben). Korrupte JSON ⇒ laut + Backup
                 settings.json.corrupt, fehlende ⇒ still Defaults; Felder mit
                 Defaults statt Migration
+  setup.rs      Setup-Assistent-Logik (specs 4.10): Erststart-Erkennung.
+                Veteranen-Migration einmalig beim Start (settings.json
+                existierte + Modell auffindbar + setup_done fehlt ⇒ als
+                erledigt markiert, geloggt); danach entscheidet allein
+                settings.setup_done. UI in setup.tsx, Mikro-Test-Commands
+                (mic_test_start/stop, 5 s Auto-Stopp) in lib.rs
   selftest.rs   Headless `--selftest [wav|verzeichnis]` — Einzel-WAV oder
                 Batch mit WER gegen Ground-Truths (Eval-Harness)
 src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
                 Übersicht: Letzte Diktate-Liste aus der Historie; App reicht
-                nur durch, was die Übersicht zeigt), settings.tsx (Hotkeys,
+                nur durch, was die Übersicht zeigt; rendert bis setup_done
+                den Setup-Assistenten statt der Tabs), settings.tsx (Hotkeys,
                 Ablageort, Mikrofon, Wörterbuch-Profile, Overlay, Sound,
-                Autostart, Modell-Download, Version — lädt Mikrofon/Geräte/
-                Ablageort selbst), theme.ts (Farbschema: „system" auflösen,
+                Autostart, Modell-Download, Version + „Einrichtung
+                wiederholen" — lädt Mikrofon/Geräte/Ablageort selbst),
+                setup.tsx (Assistent: Willkommen → Mikro mit Pegel-Test →
+                Modell → Diktat-Test → Fertig; Events statt Polling),
+                theme.ts (Farbschema: „system" auflösen,
                 OS-Wechsel-Listener einmalig montiert), overlay.tsx (Pille)
 ```
 
