@@ -32,6 +32,11 @@ npm-Pakete) werden gemäß ihrer Lizenzen als Abhängigkeiten genutzt.
 
 ## Recherche-Grundlage
 
+- `codebase-design`-Skill (mattpocock/skills, MIT): am 23.11.2026 sichtbar geprüft
+  und unverändert unter `.claude/skills/codebase-design/` installiert —
+  Vokabular-Referenz (module/interface/seam/…) für Architektur-Reviews, keine
+  Code-Übernahme in den App-Quelltext
+
 - `Dictation-SW-Perplexity-Research_2026-10-24.md` (Perplexity-Recherche des Nutzers)
 - SOTA-Deutsch-Modellrecherche vom 24.10.2026 (ASR-Leaderboard-DE:
   arxiv.org/html/2510.06961v4; NVIDIA Parakeet/Canary: arxiv.org/html/2509.14128v1)
