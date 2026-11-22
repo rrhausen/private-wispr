@@ -19,6 +19,13 @@ Vulkan), Tauri 2 (Rust + React/TS). Deutsch zuerst, Englisch second.
 ```
 src-tauri/src/
   lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
+  dictation.rs  Diktat-Verarbeitung (GLOSSARY.md) — das stille tiefe Modul
+                hinter einer Funktion: Wörterbuch-Feed in den Decode,
+                transkribieren (SttEngine), Regeln, Fitting UND die komplette
+                Audio-Politik (specs 4.8, jeden Pfad entsorgt). App und
+                Selftest rufen dieselbe process(); alle Abhängigkeiten
+                (Engine, Wörterbuch, SeamContext, Archiv-Flag) injiziert,
+                Fake-Engine als Test-Adapter
   hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up) — frei
                 konfigurierbar (M1): Konflikt-Validierung, Umregistrierung
                 zur Laufzeit mit Rollback. Cursor = Halten (PTT), Hand-off =
@@ -62,8 +69,8 @@ src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
 
 **Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →
 Overlay „recording" → Released → `recording::stop` → Thread:
-`stt::transcribe` (vocabulary) → `dictionary::apply` → `fitting::fit` →
-`paste::paste_text` (Fokus-Check) bzw. `handoff::append` →
+`dictation::process` (stille Pipeline: transcribe + Regeln + Fitting +
+Audio-Politik) → `paste::paste_text` (Fokus-Check) bzw. `handoff::append` →
 `history::insert` → Overlay „done". Events: `pw://status`, `pw://overlay`,
 `pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hotkey-captured`,
 `pw://model-download`, `pw://history-changed`.
