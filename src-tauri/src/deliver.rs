@@ -19,14 +19,19 @@
 //! * Hand-off fehlgeschlagen ⇒ Text in die Zwischenablage + laute Meldung.
 //!   NIEMALS Strg+V als Ersatz: Hand-off-Ziele sind elevated, UIPI blockt
 //!   injizierte Tasten — der frühere Paste-Fallback ging ins Leere.
-//! * Strg+V fehlgeschlagen ⇒ Text liegt (durch das vorherige Kopieren) in
-//!   der Zwischenablage; die Meldung sagt es statt nur eines Log-Eintrags.
+//! * Einfügen nicht bestätigt (Paste-Transaktion ohne Lesebestätigung,
+//!   z. B. elevated/UIPI-Ziel) ⇒ Text bleibt in der Zwischenablage
+//!   (manuelles Einfügen möglich); die Meldung sagt es.
+//! * Transaktion nicht startbar (Zwischenablage blockiert/Riesenformate)
+//!   ⇒ plain Kopieren + Chord ohne Restore (Verhalten wie vor der Trans-
+//!   aktion), im Log begründet.
 
 use log::{error, info, warn};
 
 use crate::focus;
 use crate::handoff;
 use crate::paste;
+use crate::paste_tx;
 use crate::recording::OutputMode;
 use crate::settings;
 
@@ -98,9 +103,36 @@ pub fn execute(plan: &DeliveryPlan, text: &str) -> DeliveryReport {
 }
 
 fn insert_at_cursor(target_app: Option<&str>, text: &str) -> DeliveryReport {
-    // Kopieren und Paste-Chord getrennt (paste.rs): Schlägt nur das Einfügen,
-    // liegt der Text wenigstens in der Zwischenablage — die Meldung sagt es.
     let chord = paste::select_chord(&settings::current().paste_chord, target_app);
+    // Transaktion (paste_tx, specs 4.6): Delayed-Render, Lesebestätigung,
+    // Clipboard-Restore. Der Trigger schickt den Chord (injizierbar für
+    // Tests); Modifier-Warte steckt darin.
+    let mut trigger = || paste::send_paste_chord(chord);
+    match paste_tx::run(text, &mut trigger) {
+        paste_tx::PasteTxOutcome::Pasted { .. } => DeliveryReport {
+            target: "Cursor".into(),
+            done_msg: None,
+            history_mode: "cursor",
+        },
+        paste_tx::PasteTxOutcome::NoReceipt => {
+            // Nachweislich nicht eingefügt (elevated/UIPI oder blockiertes
+            // Ziel): Der Text bleibt als Delayed-Owner in der Zwischenablage.
+            warn!("Einfügen nicht bestätigt — Text liegt in der Zwischenablage");
+            DeliveryReport {
+                target: "Zwischenablage (Einfügen nicht bestätigt)".into(),
+                done_msg: Some("→ Zwischenablage — Einfügen nicht bestätigt".into()),
+                history_mode: "cursor",
+            }
+        }
+        paste_tx::PasteTxOutcome::ClipboardGone => plain_insert(chord, text),
+    }
+}
+
+/// Transaktion konnte nicht starten (Zwischenablage blockiert oder Snapshot-
+/// Kappen bei Riesenformaten): plain Kopieren + Chord — das Einfügen funk-
+/// tioniert, nur der Restore entfällt. Verhalten wie vor der Transaktion,
+/// im Log begründet (kein stiller Fallback).
+fn plain_insert(chord: paste::Chord, text: &str) -> DeliveryReport {
     if let Err(e) = paste::copy_to_clipboard(text) {
         return clipboard_unavailable("cursor", e);
     }

@@ -21,6 +21,7 @@ mod history;
 mod hotkey;
 mod model_download;
 mod paste;
+mod paste_tx;
 mod recording;
 pub mod selftest;
 mod settings;
