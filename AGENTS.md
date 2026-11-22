@@ -4,9 +4,12 @@ Dieses Repo wird maßgeblich mit AI-Coding-Agenten entwickelt. Diese Datei ist
 der verbindliche Einstieg. **Die Spezifikation ist die Wahrheit für Verhalten
 und Architektur:** [`specs/2026-10-24-private-wispr-spezifikation.md`](specs/2026-10-24-private-wispr-spezifikation.md)
 (inkl. Entscheidungs-Log am Ende — Entscheidungen dort nachlesen, nicht neu
-diskutieren). **[`STATUS.md`](STATUS.md) ist die Wahrheit für den
-Sprint-/Meilensteins-Fortschritt** — am Ende jedes Sprints aktualisieren,
-Git-Tag `m<Meilenstein>-sprint<n>` setzen, pushen.
+diskutieren). **[`GLOSSARY.md`](GLOSSARY.md) ist die verbindliche Sprache**
+für Code, UI-Texte und Reviews; **[`docs/adr/`](docs/adr/) festhält
+getroffene Architektur-Entscheidungen** (nicht neu aufrollen — neue
+Entscheidungen als ADR dazu). **[`STATUS.md`](STATUS.md) ist die Wahrheit
+für den Sprint-/Meilensteins-Fortschritt** — am Ende jedes Sprints
+aktualisieren, Git-Tag `m<Meilenstein>-sprint<n>` setzen, pushen.
 
 ## Projekt in einem Satz
 
@@ -14,23 +17,20 @@ Private, deutsch-first Diktat-App für Windows 11: Taste halten, sprechen,
 loslassen — Text erscheint am Cursor. Lokale STT via transcribe.cpp (GGUF,
 Vulkan), Tauri 2 (Rust + React/TS). Deutsch zuerst, Englisch second.
 
-## Architektur (Stand M0)
+## Architektur (Stand M1, Sprint 3)
 
 ```
 src-tauri/src/
   lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
-  dictation.rs  Diktat-Verarbeitung (GLOSSARY.md) — das stille tiefe Modul
-                hinter einer Funktion: Wörterbuch-Feed in den Decode,
-                transkribieren (SttEngine), Regeln, Fitting UND die komplette
-                Audio-Politik (specs 4.8, jeden Pfad entsorgt). App und
-                Selftest rufen dieselbe process(); alle Abhängigkeiten
-                (Engine, Wörterbuch, SeamContext, Archiv-Flag) injiziert,
-                Fake-Engine als Test-Adapter
-  hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up) — frei
-                konfigurierbar (M1): Konflikt-Validierung, Umregistrierung
-                zur Laufzeit mit Rollback. Cursor = Halten (PTT), Hand-off =
-                Toggle (Antippen startet/stoppt). Key-Capture bewusst im
-                Frontend (ADR 0001: docs/adr/0001-key-capture-im-frontend.md)
+  dictation.rs  Diktat-Verarbeitung (GLOSSARY.md) — stilles tiefes Modul hinter
+                einer Funktion: transcribe (SttEngine) + Regeln + Fitting +
+                komplette Audio-Politik (specs 4.8, jeden Pfad entsorgt).
+                App und Selftest rufen dieselbe process(); Abhängigkeiten
+                injiziert, Fake-Engine als Test-Adapter
+  hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up), frei
+                konfigurierbar: Konflikt-Validierung, Umregistrierung zur
+                Laufzeit. Cursor = Halten (PTT), Hand-off = Toggle.
+                Key-Capture bewusst im Frontend (ADR 0001)
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
                 WAV wird nach Transkription default gelöscht (specs 4.8)
@@ -58,8 +58,8 @@ src-tauri/src/
                 abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
   handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
   settings.rs   JSON-Settings (Felder mit Defaults statt Migration)
-  selftest.rs   Headless-Modus `--selftest [wav]` (Eval-Keimzelle; misst
-                Wörterbuch+Fitting mit: raw/final/applied_rules)
+  selftest.rs   Headless `--selftest [wav|verzeichnis]` — Einzel-WAV oder
+                Batch mit WER gegen Ground-Truths (Eval-Harness)
 src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
                 Übersicht: Letzte Diktate-Liste aus der Historie),
                 settings.tsx (Hotkeys, Ablageort, Mikrofon, Wörterbuch-
@@ -72,7 +72,7 @@ Overlay „recording" → Released → `recording::stop` → Thread:
 `dictation::process` (stille Pipeline: transcribe + Regeln + Fitting +
 Audio-Politik) → `paste::paste_text` (Fokus-Check) bzw. `handoff::append` →
 `history::insert` → Overlay „done". Events: `pw://status`, `pw://overlay`,
-`pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hotkey-captured`,
+`pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hook-status`,
 `pw://model-download`, `pw://history-changed`.
 
 ## Wie baue und teste ich
@@ -91,8 +91,11 @@ bun run tauri dev
 target/debug/private-wispr.exe --selftest
 
 # Vollständiger Transkriptions-Test mit Audio (16 kHz mono direkt; M4A/MP3/
-# OPUS/WAV anderer Rate via ffmpeg — PATH oder PW_FFMPEG, Eval-Clips s. u.):
+# OPUS/WAV anderer Rate via ffmpeg — PATH oder PW_FFMPEG):
 target/debug/private-wispr.exe --selftest path/to/test.wav
+
+# Eval-Batch: alle Clips eines Ordners mit WER gegen die .txt-Ground-Truths:
+target/release/private-wispr.exe --selftest ../eval/audio
 
 # Frontend-Build
 bun run build
@@ -121,15 +124,15 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
   Begründungen willkommen (siehe Bestand).
 - **Commits:** konventionell und klein (`feat:`, `fix:`, `docs:`, `refactor:`,
   `test:`, `chore:`), Deutsch oder Englisch, eine logische Änderung pro Commit.
-- **Keine stillen Fallbacks** (spezifiziertees Vertrauenskonzept): Fehler
+- **Keine stillen Fallbacks** (spezifiziertes Vertrauenskonzept): Fehler
   melden, nie heimlich auf CPU/Cloud/anders umschalten — Ausnahme: Engine-internes
   GPU→CPU ist ok, muss aber im Status sichtbar bleiben.
 - **Audio/Stimmdaten niemals committen** (`.gitignore` schließt `*.wav`,
-  `eval/audio/` aus). Ground-Truth-Texte (`*.txt`) dagegen schon.
+  `eval/audio/` aus). Ground-Truth-Texte (`*.txt`) dürfen committet werden.
 - **Modell-Dateien niemals committen** (`.gguf`, `.onnx`).
 - Neue Backend-Fähigkeiten: Event `pw://…` + Frontend-Zustand, kein Polling.
-- Tests: Rust-Unit-Tests (`cargo test`) für Regel-Logik; E2E über `--selftest`
-  mit festen WAVs unter `eval/audio/` (nicht im Repo, lokal erzeugt).
+- Tests: Rust-Unit-Tests (`cargo test`) für Regel-Logik; E2E über den
+  Selftest mit festen WAVs unter `eval/audio/`.
 
 ## Wichtigste bewusste Abweichungen/Offenpunkte (M0 → M1)
 
@@ -140,20 +143,20 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
    kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
    nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).
 3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
-3a. **Aufnahmemodus je Hotkey fest verdrahtet:** Cursor = Halten, Hand-off =
+4. **Aufnahmemodus je Hotkey fest verdrahtet:** Cursor = Halten, Hand-off =
    Toggle (Sprint 3.1+). Specs 4.3 sieht „Toggle"/„Hold-or-Toggle" als
    **wählbare** Modi vor — ein Setting dafür (auch pro Hotkey) folgt später.
-4. **Wörterbuch** ✅ Sprint 2 (`dictionary.rs`); Fuzzy/Phonetik bleibt v2
+5. **Wörterbuch** ✅ Sprint 2 (`dictionary.rs`); Fuzzy/Phonetik bleibt v2
    (Kölner Phonetik, NICHT ASCII-Soundex — Handys Fuzzy ist für Deutsch ungeeignet).
-5. **Historie** ✅ Sprint 2 (`history.rs`, SQLite inkl. applied_rules).
+6. **Historie** ✅ Sprint 2 (`history.rs`, SQLite inkl. applied_rules).
 
 ## Eval (specs Abschnitt 6)
 
-`eval/audio/` (lokal, nicht im Repo) enthält Clips + gleichnamige `.txt`
-Ground-Truths, darunter **mindestens einen ≥10-Minuten-Clip** (Brain-Dump-
-Regressionstest gegen das Whispering-Fehlerbild). `--selftest` misst
-Transkriptionszeit und RTF; WER/Fachbegriff-Quote kommen mit dem
-Regel-Modul (M1) in denselben Einstiegspunkt.
+Ablauf, Clipliste und Aufnahme-Anleitung: [`eval/README.md`](eval/README.md).
+Stand: WER-Runner ✅ (`--selftest <ordner>`), BT700-Korpus gemessen
+(11 Clips, **WER final 1,9 %** nach Regel-Ableitung; Reports in
+`eval/reports/`). Offen: WL5024-Clips vom Arbeitslaptop, Fachbegriff-Quote
+als eigene Metrik.
 
 ## Bekannte Issues
 
