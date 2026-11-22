@@ -25,6 +25,7 @@ mod paste_tx;
 mod recording;
 pub mod selftest;
 mod seam;
+mod setup;
 mod settings;
 pub mod stt;
 mod upgrade;
@@ -45,6 +46,10 @@ pub struct AppState {
     pub engine: Arc<Mutex<Option<Box<dyn stt::SttEngine + Send>>>>,
     pub engine_info: Arc<Mutex<stt::EngineInfo>>,
     pub recording: Arc<Mutex<Option<recording::ActiveRecording>>>,
+    /// Laufende Mikrofon-Testaufnahme des Setup-Assistenten (setup.tsx):
+    /// gleiche Recorder-Maschinerie wie ein Diktat, nur ohne Transkription
+    /// und mit Auto-Stopp; die Spool-WAV wird danach gelöscht.
+    pub mic_test: Arc<Mutex<Option<recording::ActiveRecording>>>,
     /// Gewähltes Eingabegerät (Name); `None` = System-Standard.
     pub mic: Arc<Mutex<Option<String>>>,
     /// Warm gehaltener Recorder: Das Gerät (v. a. Bluetooth-Headsets) bleibt
@@ -58,6 +63,10 @@ pub struct AppState {
 
 /// Wie lange das Mikrofon nach dem letzten Diktat warm gehalten wird.
 const WARM_IDLE: Duration = Duration::from_secs(5 * 60);
+
+/// Mikrofon-Test des Setup-Assistenten: Dauer bis zum Auto-Stopp
+/// (gegrillt 22.11. — ein Klick, kurze ehrliche Rückmeldung).
+const MIC_TEST_SECS: u64 = 5;
 
 #[derive(Clone, Serialize)]
 struct OverlayPayload {
@@ -191,6 +200,85 @@ fn set_paste_chord(chord: String) -> Result<(), String> {
 #[tauri::command]
 fn set_archive_audio(enabled: bool) -> Result<(), String> {
     settings::update(|s| s.archive_audio = enabled).map_err(|e| e.to_string())
+}
+
+// ─── Setup-Assistent (specs 4.10) ────────────────────────────────────────
+
+/// Mikrofon-Test starten (Assistent): gleiche Recorder-Maschinerie wie ein
+/// Diktat (Fallback-Kette, Warmhalten-Synergie), aber ohne Transkription —
+/// Pegel läuft über `pw://level`, Ende (nach spätestens MIC_TEST_SECS) über
+/// `pw://mic-test { running: false }`. Läuft schon ein Test oder ein echtes
+/// Diktat, ist der Start ein No-op-Erfolg (die UI deaktiviert den Button
+/// ohnehin).
+#[tauri::command]
+fn mic_test_start(app: AppHandle, state: tauri::State<AppState>) -> Result<(), String> {
+    if state.recording.lock().unwrap().is_some() {
+        return Err("Ein Diktat läuft gerade".into());
+    }
+    if state.mic_test.lock().unwrap().is_some() {
+        return Ok(()); // Test läuft bereits — nichts zu tun
+    }
+    let warm = state.mic_warm.lock().unwrap().take();
+    let (recorder, used_fallback) = match warm {
+        Some((recorder, _)) => (recorder, false),
+        None => recording::open_for_mic(
+            state.mic.lock().unwrap().clone(),
+            Some(state.mic_warm.clone()),
+        )
+        .map_err(|e| e.to_string())?,
+    };
+    let active = recording::start_with(&app, recorder, used_fallback, OutputMode::Cursor)
+        .map_err(|e| e.to_string())?;
+    *state.mic_test.lock().unwrap() = Some(active);
+    let _ = app.emit("pw://mic-test", true);
+
+    // Auto-Stopp: der Test endet von selbst, kein Stop-Button nötig.
+    let handle = app.clone();
+    let state_test = state.mic_test.clone();
+    let state_warm = state.mic_warm.clone();
+    std::thread::Builder::new()
+        .name("pw-mic-test".into())
+        .spawn(move || {
+            std::thread::sleep(Duration::from_secs(MIC_TEST_SECS));
+            stop_mic_test(&handle, &state_test, &state_warm);
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Testaufnahme beenden: Recorder sauber schließen (Warmhalten), Spool-WAV
+/// entsorgen, Ende melden. Idempotent — Aufruf ohne laufenden Test ist ok.
+fn stop_mic_test(
+    app: &AppHandle,
+    slot: &Arc<Mutex<Option<recording::ActiveRecording>>>,
+    warm: &recording::WarmSlot,
+) {
+    let active = slot.lock().unwrap().take();
+    if let Some(active) = active {
+        match recording::stop(active) {
+            Ok(stopped) => {
+                // Testaudio ist Müll: Spool-WAV löschen (Audio-Politik).
+                let _ = std::fs::remove_file(&stopped.spooled.wav_path);
+                if stopped.clean {
+                    *warm.lock().unwrap() = Some((stopped.recorder, std::time::Instant::now()));
+                }
+            }
+            Err(e) => warn!("Mikrofon-Test: Stopp fehlgeschlagen ({e:#})"),
+        }
+    }
+    let _ = app.emit("pw://mic-test", false);
+}
+
+#[tauri::command]
+fn mic_test_stop(app: AppHandle, state: tauri::State<AppState>) {
+    stop_mic_test(&app, &state.mic_test, &state.mic_warm);
+}
+
+/// Setup-Assistent abschließen (letzter Schritt oder „ohne Test
+/// fertigstellen") — `setup_done` persistieren.
+#[tauri::command]
+fn finish_setup() -> Result<(), String> {
+    settings::update(|s| s.setup_done = true).map_err(|e| e.to_string())
 }
 
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
@@ -344,10 +432,15 @@ pub fn run() {
             }));
 
             let initial = settings::current();
+            // Setup-Assistent (specs 4.10): Bestandsinstallationen einmalig
+            // als eingerichtet markieren, BEVOR das Frontend zum ersten Mal
+            // liest (setup.rs entscheidet, Migration ist geloggt).
+            setup::run_startup_migration();
             app.manage(AppState {
                 engine: Arc::new(Mutex::new(None)),
                 engine_info: Arc::new(Mutex::new(stt::EngineInfo::default())),
                 recording: Arc::new(Mutex::new(None)),
+                mic_test: Arc::new(Mutex::new(None)),
                 mic: Arc::new(Mutex::new(initial.mic_device)),
                 mic_warm: Arc::new(Mutex::new(None)),
                 focus_at_start: Mutex::new(None),
@@ -410,6 +503,9 @@ pub fn run() {
             set_theme,
             set_paste_chord,
             set_archive_audio,
+            mic_test_start,
+            mic_test_stop,
+            finish_setup,
             set_hotkeys,
             hook_status,
             download_model,

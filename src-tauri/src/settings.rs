@@ -89,6 +89,12 @@ pub struct Settings {
     /// "shift_insert". Auswahl-Logik in paste::select_chord.
     #[serde(default = "default_paste_chord")]
     pub paste_chord: String,
+    /// Setup-Assistent abgeschlossen (specs 4.10). Default false — aber
+    /// setup.rs migriert Bestandsinstallationen (Settings vorhanden +
+    /// Modell liegt vor) beim Start einmalig auf true, damit der Assistent
+    /// nur echten Erststarts erscheint.
+    #[serde(default)]
+    pub setup_done: bool,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
 }
@@ -121,6 +127,7 @@ impl Default for Settings {
             archive_audio: false,
             theme: default_theme(),
             paste_chord: default_paste_chord(),
+            setup_done: false,
             hotkeys: HotkeySettings::default(),
         }
     }
@@ -149,9 +156,12 @@ fn settings_path() -> PathBuf {
 
 /// Cache plus zugehöriger Dateipfad. Der Pfad ist Teil des Stores, damit
 /// Tests gegen Temp-Dateien laufen statt gegen die echte settings.json.
+/// `existed`: lag beim Laden eine settings.json (Erststart-Erkennung für
+/// den Setup-Assistenten, setup.rs)?
 struct Store {
     settings: Settings,
     path: PathBuf,
+    existed: bool,
 }
 
 static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
@@ -197,26 +207,33 @@ fn backup_corrupt(path: &Path) -> PathBuf {
 }
 
 /// Store-Inhalt von der Platte laden. Korrupte Datei: Defaults + Original
-/// gesichert + Fehler geloggt (laut, aber die App läuft weiter).
+/// gesichert + Fehler geloggt (laut, aber die App läuft weiter). Eine
+/// korrupte Datei gilt als „existierte" — die Installation lief schon.
 fn open_store_at(path: PathBuf) -> Store {
-    let settings = match load_from(&path) {
-        Loaded::Parsed(s) => s,
-        Loaded::Missing => Settings::default(),
+    let (settings, existed) = match load_from(&path) {
+        Loaded::Parsed(s) => (s, true),
+        Loaded::Missing => (Settings::default(), false),
         Loaded::Corrupt { source } => {
             let backup = backup_corrupt(&path);
             error!(
                 "Settings unlesbar: {source} — Original gesichert als {}, arbeite mit Defaults weiter",
                 backup.display()
             );
-            Settings::default()
+            (Settings::default(), true)
         }
     };
-    Store { settings, path }
+    Store { settings, path, existed }
 }
 
 /// Aktueller Settings-Stand (Clone aus dem Prozess-Cache — keine Platte).
 pub fn current() -> Settings {
     store().lock().unwrap().settings.clone()
+}
+
+/// Lag beim Laden eine settings.json (false = echter Erststart)? Für die
+/// Veteranen-Migration des Setup-Assistenten (setup.rs).
+pub fn settings_existed() -> bool {
+    store().lock().unwrap().existed
 }
 
 /// Der EINZIGE Schreibpfad: mutiert, schreibt durch (write-through) und
@@ -264,14 +281,16 @@ pub(crate) mod testing {
 
     /// Voriger Stand, den Drop wiederherstellt.
     pub struct StoreSwap {
-        prev: (Settings, PathBuf),
+        prev: (Settings, PathBuf, bool),
     }
 
     pub fn swap(settings: Settings, path: PathBuf) -> StoreSwap {
         let mut guard = store().lock().unwrap();
-        let prev = (guard.settings.clone(), guard.path.clone());
+        let prev = (guard.settings.clone(), guard.path.clone(), guard.existed);
         guard.settings = settings;
         guard.path = path;
+        // Test-Stores gelten als „existierte" (wie geschrieben).
+        guard.existed = true;
         StoreSwap { prev }
     }
 
@@ -280,6 +299,7 @@ pub(crate) mod testing {
             let mut guard = store().lock().unwrap();
             guard.settings = self.prev.0.clone();
             guard.path = self.prev.1.clone();
+            guard.existed = self.prev.2;
         }
     }
 }
