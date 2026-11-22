@@ -3,6 +3,7 @@
 // Aufbau: Sektionskopf über der Karte, Zeilen mit Titel/Untertitel links und
 // Control rechts — eine Control-Breite pro Karte für ruhige Kanten.
 import { useEffect, useState, type ReactNode } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -159,9 +160,13 @@ export default function SettingsPanel({
   const [download, setDownload] = useState<DownloadEvent | null>(null);
   const [dict, setDict] = useState<DictionaryStatus | null>(null);
   const [dictError, setDictError] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<DictionaryStatus>("dictionary_status").then(setDict).catch(console.error);
+    // Versionsnummer der installierten App (aus tauri.conf.json; dort wird
+    // sie beim Release gemeinsam mit Cargo.toml/package.json gebumpt).
+    getVersion().then(setVersion).catch(console.error);
   }, []);
 
   // Profil umschalten: aktive Liste neu setzen, Status kommt zurück.
@@ -756,6 +761,19 @@ export default function SettingsPanel({
           checked={autostart}
           onChange={(v) => void toggleAutostart(v)}
         />
+      </Section>
+
+      <Section head="Version">
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Private Wispr {version ?? "…"}</span>
+            <span className="row-sub">
+              Kein Auto-Update: Eine neuere portable Kopie starten genügt — auf
+              der Übersicht erscheint dann das Upgrade-Angebot. Einstellungen,
+              Modell und Historie bleiben dabei erhalten.
+            </span>
+          </div>
+        </div>
       </Section>
     </div>
   );
