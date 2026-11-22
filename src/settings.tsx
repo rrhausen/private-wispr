@@ -39,6 +39,8 @@ interface Props {
   engineModel: string;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  /** Setup-Assistent erneut starten (specs 4.10 — Re-Entry für Gerätewechsel). */
+  onRunSetup: () => void;
 }
 
 type CaptureTarget = "cursor" | "handoff" | null;
@@ -140,6 +142,7 @@ export default function SettingsPanel({
   engineModel,
   theme,
   onThemeChange,
+  onRunSetup,
 }: Props) {
   const [overlay, setOverlay] = useState(true);
   const [feedback, setFeedback] = useState(true);
@@ -819,6 +822,19 @@ export default function SettingsPanel({
               Modell und Historie bleiben dabei erhalten.
             </span>
           </div>
+        </div>
+        <div className="divider" />
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Einrichtung wiederholen</span>
+            <span className="row-sub">
+              Mikrofon, Sprachmodell und Diktat-Test noch einmal durchlaufen —
+              z. B. nach einem Gerätewechsel.
+            </span>
+          </div>
+          <button className="btn" onClick={onRunSetup}>
+            Assistent starten
+          </button>
         </div>
       </Section>
     </div>

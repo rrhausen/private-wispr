@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SettingsPanel, { hotkeyLabel } from "./settings";
+import SetupWizard from "./setup";
 import { useTheme } from "./theme";
 
 interface StatusInfo {
@@ -104,10 +105,20 @@ export default function App() {
   const { theme, isLight, setTheme, toggleTheme } = useTheme();
   const [upgrade, setUpgrade] = useState<UpgradePlan | null>(null);
   const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
+  // Setup-Assistent (specs 4.10): null = noch nicht entschieden — nichts
+  // rendern, damit die Tabs nicht aufblitzen. true = Assistent (Vollfläche
+  // statt Tabs), false = normaler Betrieb.
+  const [setupActive, setSetupActive] = useState<boolean | null>(null);
   const [hotkeys, setHotkeys] = useState<StatusInfo["hotkeys"]>({
     cursor: "ctrl+alt+space",
     handoff: "ctrl+alt+h",
   });
+
+  useEffect(() => {
+    invoke<{ setup_done: boolean }>("get_settings")
+      .then((s) => setSetupActive(!s.setup_done))
+      .catch(() => setSetupActive(false));
+  }, []);
 
   function loadHistory() {
     invoke<HistoryEntry[]>("history_list", { limit: 10 })
@@ -214,22 +225,26 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="segmented" role="tablist">
-        <button
-          className={tab === "overview" ? "segment active" : "segment"}
-          onClick={() => setTab("overview")}
-        >
-          <span className="check">{tab === "overview" ? "✓" : ""}</span>
-          Übersicht
-        </button>
-        <button
-          className={tab === "settings" ? "segment active" : "segment"}
-          onClick={() => setTab("settings")}
-        >
-          <span className="check">{tab === "settings" ? "✓" : ""}</span>
-          Einstellungen
-        </button>
-      </nav>
+      {setupActive === null ? null : setupActive ? (
+        <SetupWizard onFinished={() => setSetupActive(false)} />
+      ) : (
+        <>
+          <nav className="segmented" role="tablist">
+            <button
+              className={tab === "overview" ? "segment active" : "segment"}
+              onClick={() => setTab("overview")}
+            >
+              <span className="check">{tab === "overview" ? "✓" : ""}</span>
+              Übersicht
+            </button>
+            <button
+              className={tab === "settings" ? "segment active" : "segment"}
+              onClick={() => setTab("settings")}
+            >
+              <span className="check">{tab === "settings" ? "✓" : ""}</span>
+              Einstellungen
+            </button>
+          </nav>
 
       {tab === "overview" ? (
         <>
@@ -398,7 +413,10 @@ export default function App() {
           engineModel={engine?.model ?? ""}
           theme={theme}
           onThemeChange={setTheme}
+          onRunSetup={() => setSetupActive(true)}
         />
+      )}
+          </>
       )}
 
       <footer className="foot">Privat und lokal — Audio verlässt diesen Rechner nicht.</footer>
