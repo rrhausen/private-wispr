@@ -65,7 +65,12 @@ src-tauri/src/
   feedback.rs   Dezenter Klick beim Aufnahme-Start (WAV-Synthese + PlaySoundW;
                 abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
   handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
-  settings.rs   JSON-Settings (Felder mit Defaults statt Migration)
+  settings.rs   Settings hinter einer Seam (ADR 0002): Prozess-Cache, lazy
+                geladen; current() (Clone, keine Platte) + update() als
+                einziger, atomarer Schreibpfad (Committ erst nach
+                erfolgreichem Schreiben). Korrupte JSON ⇒ laut + Backup
+                settings.json.corrupt, fehlende ⇒ still Defaults; Felder mit
+                Defaults statt Migration
   selftest.rs   Headless `--selftest [wav|verzeichnis]` — Einzel-WAV oder
                 Batch mit WER gegen Ground-Truths (Eval-Harness)
 src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
