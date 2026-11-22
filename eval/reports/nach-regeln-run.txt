@@ -1,0 +1,440 @@
+Modell: parakeet-tdt-0.6b-v3-Q8_0 · Vulkan1 · GPU · Load 1059 ms
+  ✓ bt700-bericht-01 (49.4 s)
+  ✓ bt700-braindump-01 (632.4 s)
+  ✓ bt700-chat-01 (32.6 s)
+  ✓ bt700-fachbegriffe-01 (110.0 s)
+  ✓ bt700-fachbegriffe-02 (65.5 s)
+  ✓ bt700-mail-01 (48.9 s)
+  ✓ bt700-mix-01 (110.5 s)
+  ✓ bt700-namen-01 (20.3 s)
+  ✓ bt700-natuerlich-01 (44.6 s)
+  ✓ bt700-notiz-01 (75.8 s)
+  ✓ bt700-zahlen-01 (92.2 s)
+
+Clip                           Sek.      RTF   WER roh  WER final  Fehler
+----------------------------------------------------------------------------
+bt700-bericht-01               49.4    0.006     10.6%      2.9%       2
+bt700-braindump-01            632.4    0.008      1.6%      1.2%      13
+bt700-chat-01                  32.6    0.005      5.6%      2.8%       1
+bt700-fachbegriffe-01         110.0    0.009      2.6%      2.6%       5
+bt700-fachbegriffe-02          65.5    0.013      4.5%      0.8%       1
+bt700-mail-01                  48.9    0.008      1.7%      0.9%       1
+bt700-mix-01                  110.5    0.012      9.3%      5.2%      12
+bt700-namen-01                 20.3    0.006     22.2%     11.1%       3
+bt700-natuerlich-01            44.6    0.007      1.2%      0.0%       0
+bt700-notiz-01                 75.8    0.016     24.1%     10.3%      12
+bt700-zahlen-01                92.2    0.016      0.6%      0.6%       1
+----------------------------------------------------------------------------
+Gesamt: 1282.1 s Audio · RTF 0.010 · WER final (wortgewichtet) 2.3% (55 Fehler auf 2413 Wörtern)
+
+Ersetzungen (Referenz ← erkannt, Top 40):
+    3×  "klimmek" ← "klimmeck"
+    2×  "uit" ← "uat"
+    1×  "activities" ← "lightman"
+    1×  "anbei" ← "by"
+    1×  "beate" ← "arte"
+    1×  "beine" ← "buyny"
+    1×  "bocaei" ← "e"
+    1×  "buyny" ← "beini"
+    1×  "cutover" ← "cad"
+    1×  "der" ← "den"
+    1×  "e" ← "die"
+    1×  "e" ← "ihr"
+    1×  "einen" ← "ein"
+    1×  "fachbereiche" ← "fachbereichung"
+    1×  "in" ← "demon"
+    1×  "ins" ← "des"
+    1×  "klimmet" ← "klimmeck"
+    1×  "mail" ← "meil"
+    1×  "marko" ← "marco"
+    1×  "noch" ← "auch"
+    1×  "off" ← "woff"
+    1×  "offenen" ← "offene"
+    1×  "plan" ← "kadova"
+    1×  "pläne" ← "overpläne"
+    1×  "postgresql" ← "squadsql"
+    1×  "raci" ← "raic"
+    1×  "rechenzentrum" ← "rechenzentrums"
+    1×  "reimar" ← "reimer"
+    1×  "rice" ← "rise"
+    1×  "romich" ← "romig"
+    1×  "sam" ← "srm"
+    1×  "seuling" ← "säuling"
+    1×  "uet" ← "uat"
+    1×  "verlängern" ← "verlängert"
+    1×  "verteilung" ← "logikverteilung"
+
+Fehlende Wörter (Referenz, Top 20):
+    2×  "frau"
+    2×  "uhr"
+    1×  "buyny"
+    1×  "cutover"
+    1×  "für"
+    1×  "hausenblas"
+    1×  "logik"
+    1×  "per"
+    1×  "philipp"
+    1×  "reimar"
+    1×  "team"
+{
+  "backend": "Vulkan1",
+  "batch_dir": "../eval/audio",
+  "clips": [
+    {
+      "audio_secs": 49.3706875,
+      "clip": "bt700-bericht-01",
+      "final_text": "Hallo Olli, bezüglich erstens Intune-Einplanung habe ich mich mit Thomas Schachtschneider, Sascha et al heute abgestimmt. Zweitens AI Empowerment. Ich würde gerne einen GitHub Copilot Lizenz. 182 Euro pro Jahr plus Copilot 30 Euro pro Monat bei SRM beantragen. im Hintergrund, es gibt seit zwei Wochen ein Microsoft-Verfahren, um Copilot Studio Agents und Power Automate Flows Coding Agent anzulegen. Dies sollte ein wesentlicher Beschleuniger zur Bereitstellung von Agent-Use Case-Implementierungen darstellen. Heute Morgen am Beispiel E-Invoice Projekt Assistent Agent erfolgreich getestet. Des Weiteren lassen sich dadurch PBC-Workflow-Automatisierungen und Content-KG Techbot schneller implementieren. Sollen wir dazu einmal sprechen.",
+      "has_ground_truth": true,
+      "raw_text": "Hallo Olli, bezüglich erstens Intune-Einplanung habe ich mich mit Thomas Schachtschneider, Sascha et al heute abgestimmt. Zweitens AI Empowerment. Ich würde gerne einen GipTab Cobalt Lizenz. 182 Euro pro Jahr plus Cobalt 30 Euro pro Monat bei SRM beantragen. In der Grund, es gibt seit zwei Wochen ein Microsoft-Verfahren, um Cobalt Studio Agents und Power Automate Flows Recording Agent anzulegen. Dies sollte ein wesentlicher Beschleuniger zur Bereitstellung von Agent-Use Case-Implementierungen darstellen. Heute Morgen am Beispiel E-Invoice Projekt Assistent Agent erfolgreich getestet. Des Weiteren lassen sich dadurch PPC-Workflow-Automatisierungen und Content-KG Techbot schneller implementieren. Sollen wir dazu einmal sprechen.",
+      "total_ms": 276.0,
+      "transcription_ms": 276,
+      "wer_final": 0.028846153846153848,
+      "wer_raw": 0.10576923076923077
+    },
+    {
+      "audio_secs": 632.4406875,
+      "clip": "bt700-braindump-01",
+      "final_text": "Okay, das ist jetzt der Branddump zum Checken der längeren Aufnahme. Ich stelle jetzt zunächst erstmal 10 Minuten jetzt hier im Countdown meiner Uhr ein, damit wir die vollständige Zahl haben. So, Countdown läuft, zehn Minuten werden runtergezählt. Gut, es geht um die Wochenvorbereitung für Kalenderwoche 48 für morgen startend 23. November 2026. Ich gucke mir jetzt gerade den Arbeitskalender von Montag, den 23. November bis Freitag, den 27. November an. Ganz jede Woche haben wir um 10 Uhr E-Invoicing Weekly. Da muss ich auf jeden Fall die Vorbereitung machen. Ich hatte noch einen zweiten Termin für den Cutover E-Invoicing eingestellt, der überlappend um 10.30 Uhr startet. Hier will ich insbesondere im Cutover Fragen für die ICC-Systeme klären mit dem Entwicklerteam, großes Architekten und Entwicklungsarchitekten. Und zwar geht es um Verbindungen, Transporte, Customizing, Stammdatenpflege, Änderungen der Job Einplanung und den Prozessübergang von Alt auf Neu. Respektive Fallback. Das sollten wir auch für einzelne Prozesse dann machen. Genau, dann sieht das relativ leer aus. Bis auf 15 Uhr für Seeburger bis Hub Project Management Show Fix. Das sind die Absprachen mit Seeburger. Dort müsste ich insbesondere einen Stanzor-E-Mail mitgeben. Ich trage mir mal eben dazu jetzt ein To-Do ein, damit ich das nicht vergesse. So, To-Do ist drin. Lass ich mal als privaten Termin können wir um 9.30 Uhr setzen. Das ist okay. Dass ich einmal Jaroslaw Depta anrufe. Dann haben wir noch um 16 Uhr den Joe Fix. Der ist jetzt für Orga-Mapping und Fortschritt. Mit Philipp Buyny, Marco Einecke und Arne Hofmann. Ob der jetzt genau gebraucht wird, weiß ich nicht. Genau, und dann geht es beim Thema Bauer AI-Chat, Drop-in-Session mit Easy. Haben wir am 24. Gut wäre, wenn ich natürlich vorher die Schulung zu Bauer iChat gemacht habe, um jetzt die Kernfunktionalitäten zumindest zu kennen. Gut, am 24. gleichzeitig ist der Nachmittag auch dann belegt mit Save the Day. Kirsten und Martina sagen Tschüss. Um 10.89 bis 11.01. Allerdings weiß ich jetzt auch nicht. Neubau SSO-Geschoss, wo das sein soll. Da werde ich nochmal ein paar wissende Fragen. Gut, dann haben wir vor der Betriebsversammlung am 25. November um 13 Uhr haben wir diverse UATs geplant. Es gibt auch eine Microsoft Discovery Session. Ob ich die um 12 Uhr wahrnehmen kann, kann ich jetzt noch nicht sagen, aber höchstwahrscheinlich ja. Und dann gibt es noch die Microsoft Ignite 2026 Recap. What's New and What's Relevant. Der wäre jetzt um 16 Uhr auch am Mittwoch, 25. November. Gut, das heißt immer wieder Lücken dazwischen, die ich dann halt eben zur Vorbereitung nutzen kann. Ich hatte jetzt noch einen Termin. Teilzeit Fortsetzung 26 versus 40 Stunden. Deswegen kommunizieren. Das habe ich mir selber eingestellt. Die hatte dem gegenüber auch noch einen Termin eingestellt. Gut, jetzt sind wir auch schon bei Donnerstag, 26. November. Schur fix um 10 Uhr mit dem PMO zu aktuellen Stand der Projekte. Abstimmungspunkten etc. Das ist dann auch gleichzeitig vor 11 Uhr für den Seeburger Biss Hub mit Project Management Show Fix. Wobei ich da jetzt auch noch keine Punkte habe, aber die werden sich dann auch aus dem Termin am Montag, 23. November, ergeben. Gut, dann ist ein regelmäßiger Kadova Lightman Termin um 12.30 Uhr Donnerstag. Da muss ich drauf aufpassen, weil den habe ich diese Woche dann am 19. leider verpasst. Gut, UATs finden noch eine Menge statt. Dann schaue ich mir mal die KW48 Vorbereitung an für E-Invoicing. Insbesondere Folie 4, das ist mit der wichtigsten Planung der Development Task und UAT Klammern Outbound. Nachdem Beati jetzt mit Honorabrechnung fertig ist, wäre die große Frage, wie geht's jetzt weiter bei ihr? Weil Holger macht ja schon mit Rassen Intercompany und manuelle Editorenrechnungen. Wäre die Frage, ob sie mit Freieinweisung, das ist Arbeitspaket Nummer 5, oder aber Webfakture Arbeitspaket Nummer 6 fortsetzen kann. Weil bei Freie Einweisung gibt es noch gar keinen UAT. Und bei Webfaktor ist der aber am 3.12. geplant. Wir sehen noch B2Cs für 27.11. Das ist Freitag. Ich glaube aber kaum, dass wir da irgendwas fertig haben. Schauen wir mal, wer teilnimmt. Jens Pfeiffer, Helga Saldiitis, Christian Pauk, Eva Meyer Thorns, Sarah Daniel, Masa, Boca E, Philipp Buyny, Benjamin Meil und Sebastian Walz, respektive Thomas Klimmeck. Ich bin mir nicht sicher, Thomas Klimmeck arbeitet ja genau 5 BZ Heft und WKZ. Da wollten wir allerdings jetzt, den hatte ich ja schon bis auf Mittwoch, den 25. geschoben. Und die Frage war, ob Montag es jetzt Informationen gibt, ob da überhaupt was stattfinden kann. Gut, im allgemeinen Test wird dann allgemein weekly, wird Thomas natürlich nicht so viel dazu mit sagen. Vermutlich. Das wird das nochmal im Nachgang. Ich denke, gegen Nachmittag am Montag, den 23. muss ich das abfragen. So, logischerweise ist hier Provision, Großkundenabrechnung, Dienstleistungsabrechnung fertiggestellt. Das heißt, das können wir ausblenden. Große Baustelle ist noch Erlösabrechnung, die ELA. Also Verlagsabrechnung. Und am Dienstag soll ja dann am 24. E-Commerce stattfinden. So, ich gucke gerade, ja, der ist jetzt hier grün eingetragen. Ich würde jetzt die anderen auch nochmal grün einfärben, um das nochmal speziell sehen zu können. So, wir haben jetzt noch zwei Minuten. Was ich morgen noch besprechen wollte, ist die laufende UAT-Entwicklungsprozessverbesserung. Stand 18.11. Mit automatischem Versand von IDocs nach Belegerstellung durch Fachbereich. Dann zweitens konsequentes Verwenden der Tagging-Logik. Mit dem Add Kollegen Zeichen in den UAT-Teams-Kanälen. Dann drittens, fertig Stellende Entwicklung von Prozess zu Prozess. Im Fokus. Fünftens, fertig Meldungen zu UAT-Tests bei Autro de Mufti durch Philipp Info an der anderen Fachbereichung. Doku der Abnahme des zugehörigen Projektrundticket. Jetzt wollte ich nochmal ein Thema prüfen, weil vorhin das zu Toggle nicht erkannt. Das schreibt sich ja T-O-G-G-L-E. Ich hoffe, das ist jetzt so auch im Transkript zu sehen. In der Langzeitaufnahme. Gut, knapp noch eine Minute. Die besprechen wir jetzt auch noch. Gut, wir haben uns jetzt sozusagen die Planung für Kalenderwoche 48 angeschaut. Ja, was jetzt mit dem Thema Panda Bay Capital ist. Und zwar bei der Führung der Ilpa-Funktionalität muss ich mir Gedanken machen, ich bräuchte einen ganzen Tag, um jetzt einmal komplett wegzuentwickeln. Beziehungsweise die Frage ist, ob ich das heute schon vorziehe, weil voraussichtlich nächste Woche noch ein Gespräch ist an besonderen Charakter. Das muss ich auch noch vorbereiten. Da geht es in Richtung Programmmanagement und da war ja auch entsprechende Artikel beim Projekt Magazin. Da muss ich jetzt nochmal in die Downloads rein. Vermutlich finde ich dann auch diese Ablage. Jetzt hier auf dem Arbeitsrechner. Das checken wir nochmal einmal und ich glaube, dass. Genau, da habe ich es auch. Endlich überblick, welche Projekte laufen bei uns wirklich. Das schaue ich mir nochmal an. Gut, damit wären wir jetzt mit der Aufnahme durch. Über 600 Sekunden. Ich stoppe die einmal.",
+      "has_ground_truth": true,
+      "raw_text": "Okay, das ist jetzt der Branddump zum Checken der längeren Aufnahme. Ich stelle jetzt zunächst erstmal 10 Minuten jetzt hier im Countdown meiner Uhr ein, damit wir die vollständige Zahl haben. So, Countdown läuft, zehn Minuten werden runtergezählt. Gut, es geht um die Wochenvorbereitung für Kalenderwoche 48 für morgen startend 23. November 2026. Ich gucke mir jetzt gerade den Arbeitskalender von Montag, den 23. November bis Freitag, den 27. November an. Ganz jede Woche haben wir um 10 Uhr E-Invoicing Weekly. Da muss ich auf jeden Fall die Vorbereitung machen. Ich hatte noch einen zweiten Termin für den Cutover E-Invoicing eingestellt, der überlappend um 10.30 Uhr startet. Hier will ich insbesondere im Cutover Fragen für die ICC-Systeme klären mit dem Entwicklerteam, großes Architekten und Entwicklungsarchitekten. Und zwar geht es um Verbindungen, Transporte, Customizing, Stammdatenpflege, Änderungen der Job Einplanung und den Prozessübergang von Alt auf Neu. Respektive Fallback. Das sollten wir auch für einzelne Prozesse dann machen. Genau, dann sieht das relativ leer aus. Bis auf 15 Uhr für Seeburger Bisab Project Management Show Fix. Das sind die Absprachen mit Seeburger. Dort müsste ich insbesondere einen Stanzor-E-Mail mitgeben. Ich trage mir mal eben dazu jetzt ein To-Do ein, damit ich das nicht vergesse. So, To-Do ist drin. Lass ich mal als privaten Termin können wir um 9.30 Uhr setzen. Das ist okay. Dass ich einmal Joslav Dapta anrufe. Dann haben wir noch um 16 Uhr den Joe Fix. Der ist jetzt für Orga-Mapping und Fortschritt. Mit Philipp Beine, Marco Einecke und Arne Hofmann. Ob der jetzt genau gebraucht wird, weiß ich nicht. Genau, und dann geht es beim Thema Bauer AI-Chat, Drop-in-Session mit Easy. Haben wir am 24. Gut wäre, wenn ich natürlich vorher die Schulung zu Bauer iChat gemacht habe, um jetzt die Kernfunktionalitäten zumindest zu kennen. Gut, am 24. gleichzeitig ist der Nachmittag auch dann belegt mit Save the Day. Kirsten und Martina sagen Tschüss. Um 10.89 bis 11.01. Allerdings weiß ich jetzt auch nicht. Neubau SSO-Geschoss, wo das sein soll. Da werde ich nochmal ein paar wissende Fragen. Gut, dann haben wir vor der Betriebsversammlung am 25. November um 13 Uhr haben wir diverse UATs geplant. Es gibt auch eine Microsoft Discovery Session. Ob ich die um 12 Uhr wahrnehmen kann, kann ich jetzt noch nicht sagen, aber höchstwahrscheinlich ja. Und dann gibt es noch die Microsoft Ignite 2026 Recap. What's New and What's Relevant. Der wäre jetzt um 16 Uhr auch am Mittwoch, 25. November. Gut, das heißt immer wieder Lücken dazwischen, die ich dann halt eben zur Vorbereitung nutzen kann. Ich hatte jetzt noch einen Termin. Teilzeit Fortsetzung 26 versus 40 Stunden. Deswegen kommunizieren. Das habe ich mir selber eingestellt. Die hatte dem gegenüber auch noch einen Termin eingestellt. Gut, jetzt sind wir auch schon bei Donnerstag, 26. November. Schur fix um 10 Uhr mit dem PMO zu aktuellen Stand der Projekte. Abstimmungspunkten etc. Das ist dann auch gleichzeitig vor 11 Uhr für den Seeburger Biss Hub mit Project Management Show Fix. Wobei ich da jetzt auch noch keine Punkte habe, aber die werden sich dann auch aus dem Termin am Montag, 23. November, ergeben. Gut, dann ist ein regelmäßiger Kadova Lightman Termin um 12.30 Uhr Donnerstag. Da muss ich drauf aufpassen, weil den habe ich diese Woche dann am 19. leider verpasst. Gut, UATs finden noch eine Menge statt. Dann schaue ich mir mal die KW48 Vorbereitung an für E-Invoicing. Insbesondere Folie 4, das ist mit der wichtigsten Planung der Development Task und UAT Klammern Outbound. Nachdem Beati jetzt mit Honorabrechnung fertig ist, wäre die große Frage, wie geht's jetzt weiter bei ihr? Weil Holger macht ja schon mit Rassen Intercompany und manuelle Editorenrechnungen. Wäre die Frage, ob sie mit Freienweisung, das ist Arbeitspaket Nummer 5, oder aber Webfakture Arbeitspaket Nummer 6 fortsetzen kann. Weil bei Freie Einweisung gibt es noch gar keinen UET. Und bei Webfaktor ist der aber am 3.12. geplant. Wir sehen noch B2Cs für 27.11. Das ist Freitag. Ich glaube aber kaum, dass wir da irgendwas fertig haben. Schauen wir mal, wer teilnimmt. Jens Pfeiffer, Helga Saldiitis, Christian Pauk, Eva Meyer Thorns, Sarah Daniel, Masa, Boca E, Philipp Beiney, Benjamin Meil und Sebastian Walz, respektive Thomas Klimmeck. Ich bin mir nicht sicher, Thomas Klimmet arbeitet ja genau 5 BZ Heft und WKZ. Da wollten wir allerdings jetzt, den hatte ich ja schon bis auf Mittwoch, den 25. geschoben. Und die Frage war, ob Montag es jetzt Informationen gibt, ob da überhaupt was stattfinden kann. Gut, im allgemeinen Test wird dann allgemein weekly, wird Thomas natürlich nicht so viel dazu mit sagen. Vermutlich. Das wird das nochmal im Nachgang. Ich denke, gegen Nachmittag am Montag, den 23. muss ich das abfragen. So, logischerweise ist hier Provision, Großkundenabrechnung, Dienstleistungsabrechnung fertiggestellt. Das heißt, das können wir ausblenden. Große Baustelle ist noch Erlösabrechnung, die ELA. Also Verlagsabrechnung. Und am Dienstag soll ja dann am 24. E-Commerce stattfinden. So, ich gucke gerade, ja, der ist jetzt hier grün eingetragen. Ich würde jetzt die anderen auch nochmal grün einfärben, um das nochmal speziell sehen zu können. So, wir haben jetzt noch zwei Minuten. Was ich morgen noch besprechen wollte, ist die laufende UAT-Entwicklungsprozessverbesserung. Stand 18.11. Mit automatischem Versand von IDocs nach Belegerstellung durch Fachbereich. Dann zweitens konsequentes Verwenden der Taging-Logik. Mit dem Add Kollegen Zeichen in den UIT-Teams-Kanälen. Dann drittens, fertig Stellende Entwicklung von Prozess zu Prozess. Im Fokus. Fünftens, fertig Meldungen zu UIT-Tests bei Autro de Mufti durch Philipp Info an der anderen Fachbereichung. Doku der Abnahmung des zugehörigen Projektrundticket. Jetzt wollte ich nochmal ein Thema prüfen, weil vorhin das zu TOCL nicht erkannt. Das schreibt sich ja T-O-G-G-L-E. Ich hoffe, das ist jetzt so auch im Transkript zu sehen. In der Langzeitaufnahme. Gut, knapp noch eine Minute. Die besprechen wir jetzt auch noch. Gut, wir haben uns jetzt sozusagen die Planung für Kalenderwoche 48 angeschaut. Ja, was jetzt mit dem Thema Panda Bay Capital ist. Und zwar bei der Führung der Ilpa-Funktionalität muss ich mir Gedanken machen, ich bräuchte einen ganzen Tag, um jetzt einmal komplett wegzuentwickeln. Beziehungsweise die Frage ist, ob ich das heute schon vorziehe, weil voraussichtlich nächste Woche noch ein Gespräch ist an besonderen Charakter. Das muss ich auch noch vorbereiten. Da geht es in Richtung Programmmanagement und da war ja auch entsprechende Artikel beim Projekt Magazin. Da muss ich jetzt nochmal in die Downloads rein. Vermutlich finde ich dann auch diese Ablage. Jetzt hier auf dem Arbeitsrechner. Das checken wir nochmal einmal und ich glaube, dass. Genau, da habe ich es auch. Endlich überblick, welche Projekte laufen bei uns wirklich. Das schaue ich mir nochmal an. Gut, damit wären wir jetzt mit der Aufnahme durch. Über 600 Sekunden. Ich stoppe die einmal.",
+      "total_ms": 5123.0,
+      "transcription_ms": 5123,
+      "wer_final": 0.012184508268059183,
+      "wer_raw": 0.015665796344647518
+    },
+    {
+      "audio_secs": 32.5706875,
+      "clip": "bt700-chat-01",
+      "final_text": "Guten Morgen Sascha. Anbei die Folie zum Intune Status, die ich gestern im Intune Monthly Project Board gezeigt, slash erläutert habe. Bezüglich Dennis hatten wir das Konzept zum Betriebsmodell auch einmal im Folgeangebot gehabt. Slide an by. Magst du mit Dennis noch den Termin einstellen? Teilnehmer du, Axel, Fisnik und ich. Magst du dir nochmal die Fragen zum Intune Operating Model anschauen und gegebenenfalls ändern, slash ergänzen, damit wir das über Olli einreichen können? Dankeschön.",
+      "has_ground_truth": true,
+      "raw_text": "Guten Morgen Sascha. Anleih die Folie zum Intune Status, die ich gestern im Intune Monthly Project Board gezeigt, slash erläutert habe. Bezüglich Dennis hatten wir das Konzept zum Betriebsmodell auch einmal im Folgeangebot gehabt. Slide an by. Magst du mit Dennis noch den Termin einstellen? Teilnehmer du, Axel, Fisnick und ich. Magst du dir nochmal die Fragen zum Intune Operating Model anschauen und gegebenenfalls ändern, slash ergänzen, damit wir das über Olli einreichen können? Dankeschön.",
+      "total_ms": 164.0,
+      "transcription_ms": 164,
+      "wer_final": 0.027777777777777776,
+      "wer_raw": 0.05555555555555555
+    },
+    {
+      "audio_secs": 110.0106875,
+      "clip": "bt700-fachbegriffe-01",
+      "final_text": "Die Invoicing-Prozesse müssen fachlich getestet, technisch integriert und vor dem Jahreswechsel vollständig vorbereitet werden. Zweitens, CAD-Overpläne enthaltene Aktivitäten, Verantwortlichkeiten, Abhängigkeiten und die erforderlichen Transportzeitpunkte. Drittens, Go-Live-Termine sollten wir erst bestätigen, wenn die notwendigen Tests und Freigaben vorliegen. Viertens. UATs helfen uns dabei, die Lösungen aus Sicht der Fachbereiche oder Produktivsetzung abzunehmen. Fünftens, End-to-End-Tests prüfen nicht nur einzelne Komponenten, sondern die komplette Verarbeitungskette. Sechstens, für jeden kritischen Prozess brauchen wir ein belastbares Fallback-Szenario. Siebtens. Änderungen an Aufwand, Budget oder Umfang dokumentieren wir über entsprechende Change Requests. 8. Rollout-Planung berücksichtigen Standorte, Geräte, Ressourcen, Testphasen und Supportkapazitäten. 9. Proof-of-Concept-Tests sollen früh zeigen, ob die geplante technische Lösung grundsätzlich funktioniert. Zehntens. RAIC-Matrizen schaffen Klarheit darüber, wer verantwortlich, ausführend, beratend oder zu informieren ist. 11. Für eine belastbare Wirkungsmessung benötigen wir zunächst eine Baseline. Zwölftens. Rise Scorings ermöglichen es uns, mehrere Use Cases anhand einheitlicher Kriterien zu priorisieren. 13. Bei neuen KI-Vorhaben verwenden wir zur strukturierten Bewertung unser Gatekeeper-Modell. 14. Human-in-Loop-Prozesse kombinieren Automatisierung mit einer bewussten menschlichen Prüfung und Freigabe. 15. Bei der technischen Verarbeitung kontrollieren wir die relevanten Nachrichten, insbesondere das IDoc.",
+      "has_ground_truth": true,
+      "raw_text": "Die Invoicing-Prozesse müssen fachlich getestet, technisch integriert und vor dem Jahreswechsel vollständig vorbereitet werden. Zweitens, CAD-Overpläne enthaltene Aktivitäten, Verantwortlichkeiten, Abhängigkeiten und die erforderlichen Transportzeitpunkte. Drittens, Go-Live-Termine sollten wir erst bestätigen, wenn die notwendigen Tests und Freigaben vorliegen. Viertens. UATs helfen uns dabei, die Lösungen aus Sicht der Fachbereiche oder Produktivsetzung abzunehmen. Fünftens, End-to-End-Tests prüfen nicht nur einzelne Komponenten, sondern die komplette Verarbeitungskette. Sechstens, für jeden kritischen Prozess brauchen wir ein belastbares Fallback-Szenario. Siebtens. Änderungen an Aufwand, Budget oder Umfang dokumentieren wir über entsprechende Change Requests. 8. Rollout-Planung berücksichtigen Standorte, Geräte, Ressourcen, Testphasen und Supportkapazitäten. 9. Proof-of-Concept-Tests sollen früh zeigen, ob die geplante technische Lösung grundsätzlich funktioniert. Zehntens. RAIC-Matrizen schaffen Klarheit darüber, wer verantwortlich, ausführend, beratend oder zu informieren ist. 11. Für eine belastbare Wirkungsmessung benötigen wir zunächst eine Baseline. Zwölftens. Rise Scorings ermöglichen es uns, mehrere Use Cases anhand einheitlicher Kriterien zu priorisieren. 13. Bei neuen KI-Vorhaben verwenden wir zur strukturierten Bewertung unser Gatekeeper-Modell. 14. Human-In-Loop-Prozesse kombinieren Automatisierung mit einer bewussten menschlichen Prüfung und Freigabe. 15. Bei der technischen Verarbeitung kontrollieren wir die relevanten Nachrichten, insbesondere das IDoc.",
+      "total_ms": 1009.0,
+      "transcription_ms": 1009,
+      "wer_final": 0.025510204081632654,
+      "wer_raw": 0.025510204081632654
+    },
+    {
+      "audio_secs": 65.5306875,
+      "clip": "bt700-fachbegriffe-02",
+      "final_text": "Cutover bedeutet für mich, dass wir die produktive Umstellung detailliert vorbereiten. Go-Lives benötigen klare Entscheidungskriterien, während UAT-Abnahmen die fachliche Produktionsreife absichern. Mehrere End-to-End-Tests können notwendig sein, bevor wir einem Rollout zustimmen. Wenn dabei kritische Probleme auftreten, benötigen wir ein Fallback. Änderungen steuern wir gegebenenfalls über Change-Request-Prozesse. Bei größeren Rollouts arbeiten wir zunächst mit ausgewählten Testgruppen. Ein Proof-of-Concept reduziert technische Unsicherheit frühzeitig. Verantwortlichkeiten halten wir in der RACI-Matrix fest. Für messbare Verbesserungen vergleichen wir Zielwerte mit der Baseline. Zur Use Case-Priorisierung eignet sich das RICE-Scoring. Bei KI-Projekten ergänzen wir diese Bewertung durch Gatekeeper-Kriterien. Kontrollpunkte mit menschlicher Entscheidung folgen dem Prinzip Human in the Loop. Im SAP-Umfeld begegnen uns schließlich unterschiedliche IDocs. Der zentralen fachlichen Kontext dafür ist E-Invoicing.",
+      "has_ground_truth": true,
+      "raw_text": "Cut over bedeutet für mich, dass wir die produktive Umstellung detailliert vorbereiten. Go-Lives benötigen klare Entscheidungskriterien, während UET-Abnahmen die fachliche Produktionsreife absichern. Mehrere End-to-End-Tests können notwendig sein, bevor wir einem Rollout zustimmen. Wenn dabei kritische Probleme auftreten, benötigen wir ein Fallback. Änderungen steuern wir gegebenenfalls über Change-Request-Prozesse. Bei größeren Rollouts arbeiten wir zunächst mit ausgewählten Testgruppen. Ein Proof-of-Concept reduziert technische Unsicherheit frühzeitig. Verantwortlichkeiten halten wir in der RACI-Matrix fest. Für messbare Verbesserungen vergleichen wir Zielwerte mit der Baseline. Zur Use Case-Priorisierung eignet sich das RICE-Scoring. Bei KI-Projekten ergänzen wir diese Bewertung durch Gatekeeper-Kriterien. Kontrollpunkte mit menschlicher Entscheidung folgen dem Prinzip Jungen in the Loop. Im SAP-Umfeld begegnen uns schließlich unterschiedliche iDocks. Der zentralen fachlichen Kontext dafür ist E-Invoicing.",
+      "total_ms": 840.0,
+      "transcription_ms": 840,
+      "wer_final": 0.007518796992481203,
+      "wer_raw": 0.045112781954887216
+    },
+    {
+      "audio_secs": 48.8706875,
+      "clip": "bt700-mail-01",
+      "final_text": "Liebe Nathalie, vielen Dank für deine weitere Überarbeitung des Artikels. Ich finde, die Version ist wirklich gelungen. Habe die Version entsprechend deinen Kommentaren bearbeitet und geeignete Änderungen vorgenommen. Die Generierungsanweisung für die Grafik habe ich dir beigefügt. Ich habe nochmal eine Neugenerierung vorgenommen, um auch die Lesbarkeit zu erhöhen. Wie in den Kommentaren geschrieben, habe ich nochmal Umstimmigkeiten in K3 und K1 beseitigt. Falls das mit dem Druck oder noch bei der Lesbarkeit Schwierigkeiten gibt, kannst du gerne mit den ebenfalls beigefügten Generierungsanweisungen diese Grafik neu generieren. Ich darf mich an dieser Stelle ganz herzlich für deine Arbeit, deine Mühe und die Zusammenarbeit bedanken und freue mich schon vorab auf die Veröffentlichung des Artikels. Herzliche Grüße, Reimer.",
+      "has_ground_truth": true,
+      "raw_text": "Liebe Nathalie, vielen Dank für deine weitere Überarbeitung des Artikels. Ich finde, die Version ist wirklich gelungen. Habe die Version entsprechend deinen Kommentaren bearbeitet und geeignete Änderungen vorgenommen. Die Generierungsanweisung für die Grafik habe ich dir beigefügt. Ich habe nochmal eine Neugenerierung vorgenommen, um auch die Lesbarkeit zu erhöhen. Wie in den Kommentaren geschrieben, habe ich nochmal Umstimmigkeiten in K3 und K1 beseitigt. Falls das mit dem Druck oder noch bei der Lesbarkeit Schwierigkeiten gibt, kannst du gerne mit den ebenfalls beigefügten Generierungsanweisen diese Grafik neu generieren. Ich darf mich an dieser Stelle ganz herzlich für deine Arbeit, deine Mühe und die Zusammenarbeit bedanken und freue mich schon vorab auf die Veröffentlichung des Artikels. Herzliche Grüße, Reimer.",
+      "total_ms": 384.0,
+      "transcription_ms": 384,
+      "wer_final": 0.008547008547008548,
+      "wer_raw": 0.017094017094017096
+    },
+    {
+      "audio_secs": 110.5006875,
+      "clip": "bt700-mix-01",
+      "final_text": "Kurze Zusammenfassung zum Review am Donnerstag. Anwesend waren Müller, Schmidt und ich, dazu Sandra Bauer von der Infrastruktur. Das Team von Weber & Partner liefert die neue Hardware bis zum 18. Dezember, also drei Wochen später als geplant. Die Kosten für den Kubernetes Cluster steigen damit von 40.000 auf 46.500 Euro. Die Serverauslastung liegt aktuell bei 78%. Offene Punkte. Schmidt kümmert sich bis Freitag, den 12. Dezember, um 16 Uhr um das TLS-Zertifikat für den Reverse-Proxy. Bauer prüft, ob die Brust-SquadsQL-Replikation des Rechenzentrums Frankfurt reicht. Die Latenz darf 50 Millisekunden nicht überschreiten. Ich aktualisiere die CI-CD-Pipeline, damit die Builds wieder unter 10 Minuten liegen. Aktuell brauchen wir 14 Minuten. Das Ticket 2026-118 ist damit erledigt. Die beiden offene Bugs mit den Nummern 402 und 417 bleiben im nächsten Sprint. Auch das Thema KI-Tools. Wir verlängert die Copilot-Lizenzen für 25 Nutzer um ein Jahr. Das kostet 348 Euro pro Nutzer und Jahr. Das Demon Hannover testet bis Ende Januar. Copilot Studio für die Ticketsuche. Bauer begleitet den Piloten. Die Dokumentation vergleichen wir Claude von Anthropic mit Google Gemini. Claude liefert bei unseren Berichten die besseren Zusammenfassungen. Gemini ist über das bestehende Google-Konto einfacher zu integrieren. Die Entscheidung treffen wir im Termin am 7. Januar. Nächster Termin, Mittwoch, 7. Januar, 9.30 Uhr. Konferenzraum 4 oder per Teams. Bis dahin sollte auch das VPN-Gateway in Hannover stehen. Frau Bauer bekommt dafür noch 20 Stunden Budget.",
+      "has_ground_truth": true,
+      "raw_text": "Kurze Zusammenfassung zum Review am Donnerstag. Anwesend waren Müller, Schmidt und ich, dazu Sandra Bauer von der Infrastruktur. Das Team von Web und Butler liefert die neue Hardware bis zum 18. Dezember, also drei Wochen später als geplant. Die Kosten für den Kubernetes Cluster steigen damit von 40.000 auf 46.500 Euro. Die Serva-Auslastung liegt aktuell bei 78%. Offene Punkte. Schmidt kümmert sich bis Freitag, den 12. Dezember, um 16 Uhr um das TLS-Zertifikat für den Reverse-Proxy. Verbauer prüft, ob die Brust-SquadsQL-Replikation des Rechenzentrums Frankfurt reicht. Die Latenz darf 50 Millisekunden nicht überschreiten. Ich aktualisiere die CI-CD-Pipeline, damit die Builds wieder unter 10 Minuten liegen. Aktuell brauchen wir 14 Minuten. Das Ticket 2026-118 ist damit erledigt. Die beiden offene Bugs mit den Nummern 402 und 417 bleiben im nächsten Sprint. Auch das Thema KI-Tools. Wir verlängert die Cobalt-Lizenzen für 25 Nutzer um ein Jahr. Das kostet 348 Euro pro Nutzer und Jahr. Das Demon Hannover testet bis Ende Januar. Cobilet Studio für die Ticketsuche. Verbau begleitet den Piloten. Die Dokumentation vergleichen wir Claude von Anthropic mit Google Gemini. Claude liefert bei unseren Berichten die besseren Zusammenfassungen. Gemini ist über das bestehende Google-Konto einfacher zu integrieren. Die Entscheidung treffen wir im Termin am 7. Januar. Nächster Termin, Mittwoch, 7. Januar, 9.30 Uhr. Konferenzraum 4 oder per Teams. Bis dahin sollte auch das VBN-Gateway in Hannover stehen. Frau Bauer bekommt dafür noch 20 Stunden Budget.",
+      "total_ms": 1342.0,
+      "transcription_ms": 1342,
+      "wer_final": 0.05241935483870968,
+      "wer_raw": 0.09274193548387097
+    },
+    {
+      "audio_secs": 20.2706875,
+      "clip": "bt700-namen-01",
+      "final_text": "Gut, wir machen noch eine Namensaufnahme und zwar sind die Namen Philipp Beini, Reimar Hausenblas, Arne Hofmann, Joachim Donner, Marco Einecke, Arte Säuling, Holger Romich, Thomas Klimmeck.",
+      "has_ground_truth": true,
+      "raw_text": "Gut, wir machen noch eine Namensaufnahme und zwar sind die Namen Philipp Beini, Reimerhausenblas, Arne Hofmann, Joachim Donner, Marco Einecke, Arte Säuling, Holger Rohmig, Thomas Klimmeck.",
+      "total_ms": 122.0,
+      "transcription_ms": 122,
+      "wer_final": 0.1111111111111111,
+      "wer_raw": 0.2222222222222222
+    },
+    {
+      "audio_secs": 44.5506875,
+      "clip": "bt700-natuerlich-01",
+      "final_text": "Gut, das dient mir jetzt zur Strukturierung für die Sprachangabe. Ich bin ja dabei, mit Private VISPA mir eine auf mich zugeschnittene Sprachtranskriptions-App zu erzeugen. Die soll mich bei Codingarbeiten, aber auch bei Strukturierung, bei Eingabe, bei Zeiterfassung und allen Eingabetätigkeiten, die ich per Sprache durchführen kann, unterstützen. Ich möchte, dass das möglichst natürlich sprachlich passiert, dass die App sich Sprachmelodie dort anpasst, bei der Erkennungsrate insbesondere und ich möchte sehr hohe Erkennungsraten haben, sodass ich die App universell in allen meinen Anwendungen benutzen kann.",
+      "has_ground_truth": true,
+      "raw_text": "Gut, das dient mir jetzt zur Strukturierung für die Sprachangabe. Ich bin ja dabei, mit Private VISPA mir eine auf mich zugeschnittene Sprachtranskriptions-App zu erzeugen. Die soll mich bei Codingarbeiten, aber auch bei Strukturierung, bei Eingabe, bei Zeiterfassung und allen Eingabentätigkeiten, die ich per Sprache durchführen kann, unterstützen. Ich möchte, dass das möglichst natürlich sprachlich passiert, dass die App sich Sprachmelodie dort anpasst, bei der Erkennungsrate insbesondere und ich möchte sehr hohe Erkennungsraten haben, sodass ich die App universell in allen meinen Anwendungen benutzen kann.",
+      "total_ms": 314.0,
+      "transcription_ms": 314,
+      "wer_final": 0.0,
+      "wer_raw": 0.011627906976744186
+    },
+    {
+      "audio_secs": 75.7906875,
+      "clip": "bt700-notiz-01",
+      "final_text": "Nächste Schritte. E-Commerce UAT auf 24. oder 25.11. abstimmen und einladen. Reimar Hausenblas. WBZ-Heft an den Fachbereich zur Prüfung übergeben. UAT-Termin neu planen. Thomas Klimmeck slash Reimar Hausenblas. Bestandsaufnahme der Tests und Unterstützungsbedarf klären. Michael Rozewicki slash Reimar Hausenblas. Kurze Anleitung zur Reprozessierung, je Prozess bereitstellen. Thomas Klimmeck, Arne Hofmann. Prüfen, ob Metras in den Intercompany Datenbank enthalten ist. Joachim Donner. Testbelege für die manuelle Rechnung bei Steffi Wieprecht, Jörg Engelmann anfordern, Holger Romig, slash Reimar Hausenblas. Termin zu IBAN, Lastschrift und Logikverteilung SAP slash Seeburger ansetzen. Arne Hofmann. Workaround für 01.1.2027 und Terminleiste in der PM-Abstimmung klären. Ihr Mail Trockentest, je Domain vorbereiten, Reimar Hausenblas slash Marco Einecke.",
+      "has_ground_truth": true,
+      "raw_text": "Nächste Schritte. E-Commerce UAT auf 24. oder 25.11. abstimmen und einladen. Reimerhausenblas. WBZ-Teft an den Fachbereich zur Prüfung übergeben. UAT-Termin neu planen. Thomas Klimmeck slash Reimerhausenblas. Bestandsaufnahme der Tests und Unterstützungsbedarf klären. Michael Rosovicki slash Reimerhausenblas. Kurze Anleitung zur Reprozessierung, je Prozess bereitstellen. Thomas Klimmeck, Arne Hofmann. Prüfen, ob Metras in den Intercompany Datenanbanken enthalten ist. Joachim Donner. Testbelege für die manuelle Rechnung bei Steffi Wiebrecht, Jörg Engelmann anfordern, Holger Romig, slash Reimer Hausenblas. Termin zu IBAN, Lastschrift und Logikverteilung SAP slash Seeborger ansetzen. Arne Hofmann. Workround für 01.1.2027 und Terminleiste in der PM-Abstimmung klären. Ihr Mail Trockentest, je Domain vorbereiten, Reimerhausenblas slash Marco Eineke.",
+      "total_ms": 1178.0,
+      "transcription_ms": 1178,
+      "wer_final": 0.10344827586206896,
+      "wer_raw": 0.2413793103448276
+    },
+    {
+      "audio_secs": 92.2306875,
+      "clip": "bt700-zahlen-01",
+      "final_text": "Kurzer Status mit Zahlen. Das Projektbudget liegt bei 3,5 Millionen Euro. Davon haben wir bisher 1,2 Millionen abgerufen. Die Auslastung im Team liegt bei 87%. Im vierten Quartal erwarten wir 95%. Das Kick-Woff war am 3. März. Das nächste Review ist am 22. November. Abgabe der Ergebnisse ist der 15. Dezember. Die tägliche Abstimmung ist um 9.15 Uhr. Das Nachmittagsreview um 14.30 Uhr und dauert etwa anderthalb Stunden. Die Telefonnummer des Lieferanten ist 0221 47 68 190. Die Bestellnummer lautet 20-24-118. Die Kundennummer 87342. Der neue Server bekommt 250 GB Speicher und 32 GB RAM. Der Alter hat nur 8 Kenner. Die Latenz liegt aktuell bei 120 Millisekunden. Im Vorjahr waren es noch 340. Der Vertrag läuft am 1. Januar 2026 bis zum 31. Dezember 2027. Verlängerung um 2 Jahre ist möglich. Zum Schluss noch bei zwei Kleinigkeiten. Wir haben noch drei von 12 Reviews offen und der Restbetrag beträgt 149,90 Euro.",
+      "has_ground_truth": true,
+      "raw_text": "Kurzer Status mit Zahlen. Das Projektbudget liegt bei 3,5 Millionen Euro. Davon haben wir bisher 1,2 Millionen abgerufen. Die Auslastung im Team liegt bei 87%. Im vierten Quartal erwarten wir 95%. Das Kick-Woff war am 3. März. Das nächste Review ist am 22. November. Abgabe der Ergebnisse ist der 15. Dezember. Die tägliche Abstimmung ist um 9.15 Uhr. Das Nachmittagsreview um 14.30 Uhr und dauert etwa anderthalb Stunden. Die Telefonnummer des Lieferanten ist 0221 47 68 190. Die Bestellnummer lautet 20-24-118. Die Kundennummer 87342. Der neue Server bekommt 250 GB Speicher und 32 GB RAM. Der Alter hat nur 8 Kenner. Die Latenz liegt aktuell bei 120 Millisekunden. Im Vorjahr waren es noch 340. Der Vertrag läuft am 1. Januar 2026 bis zum 31. Dezember 2027. Verlängerung um 2 Jahre ist möglich. Zum Schluss noch bei zwei Kleinigkeiten. Wir haben noch drei von 12 Reviews offen und der Restbetrag beträgt 149,90 Euro.",
+      "total_ms": 1483.0,
+      "transcription_ms": 1483,
+      "wer_final": 0.006060606060606061,
+      "wer_raw": 0.006060606060606061
+    }
+  ],
+  "dictionary_version": "1df75e7a",
+  "missing": [
+    {
+      "count": 2,
+      "word": "frau"
+    },
+    {
+      "count": 2,
+      "word": "uhr"
+    },
+    {
+      "count": 1,
+      "word": "buyny"
+    },
+    {
+      "count": 1,
+      "word": "cutover"
+    },
+    {
+      "count": 1,
+      "word": "für"
+    },
+    {
+      "count": 1,
+      "word": "hausenblas"
+    },
+    {
+      "count": 1,
+      "word": "logik"
+    },
+    {
+      "count": 1,
+      "word": "per"
+    },
+    {
+      "count": 1,
+      "word": "philipp"
+    },
+    {
+      "count": 1,
+      "word": "reimar"
+    },
+    {
+      "count": 1,
+      "word": "team"
+    }
+  ],
+  "model": "parakeet-tdt-0.6b-v3-Q8_0",
+  "ok": true,
+  "on_gpu": true,
+  "substitutions": [
+    {
+      "count": 3,
+      "hyp": "klimmeck",
+      "ref": "klimmek"
+    },
+    {
+      "count": 2,
+      "hyp": "uat",
+      "ref": "uit"
+    },
+    {
+      "count": 1,
+      "hyp": "lightman",
+      "ref": "activities"
+    },
+    {
+      "count": 1,
+      "hyp": "by",
+      "ref": "anbei"
+    },
+    {
+      "count": 1,
+      "hyp": "arte",
+      "ref": "beate"
+    },
+    {
+      "count": 1,
+      "hyp": "buyny",
+      "ref": "beine"
+    },
+    {
+      "count": 1,
+      "hyp": "e",
+      "ref": "bocaei"
+    },
+    {
+      "count": 1,
+      "hyp": "beini",
+      "ref": "buyny"
+    },
+    {
+      "count": 1,
+      "hyp": "cad",
+      "ref": "cutover"
+    },
+    {
+      "count": 1,
+      "hyp": "den",
+      "ref": "der"
+    },
+    {
+      "count": 1,
+      "hyp": "die",
+      "ref": "e"
+    },
+    {
+      "count": 1,
+      "hyp": "ihr",
+      "ref": "e"
+    },
+    {
+      "count": 1,
+      "hyp": "ein",
+      "ref": "einen"
+    },
+    {
+      "count": 1,
+      "hyp": "fachbereichung",
+      "ref": "fachbereiche"
+    },
+    {
+      "count": 1,
+      "hyp": "demon",
+      "ref": "in"
+    },
+    {
+      "count": 1,
+      "hyp": "des",
+      "ref": "ins"
+    },
+    {
+      "count": 1,
+      "hyp": "klimmeck",
+      "ref": "klimmet"
+    },
+    {
+      "count": 1,
+      "hyp": "meil",
+      "ref": "mail"
+    },
+    {
+      "count": 1,
+      "hyp": "marco",
+      "ref": "marko"
+    },
+    {
+      "count": 1,
+      "hyp": "auch",
+      "ref": "noch"
+    },
+    {
+      "count": 1,
+      "hyp": "woff",
+      "ref": "off"
+    },
+    {
+      "count": 1,
+      "hyp": "offene",
+      "ref": "offenen"
+    },
+    {
+      "count": 1,
+      "hyp": "kadova",
+      "ref": "plan"
+    },
+    {
+      "count": 1,
+      "hyp": "overpläne",
+      "ref": "pläne"
+    },
+    {
+      "count": 1,
+      "hyp": "squadsql",
+      "ref": "postgresql"
+    },
+    {
+      "count": 1,
+      "hyp": "raic",
+      "ref": "raci"
+    },
+    {
+      "count": 1,
+      "hyp": "rechenzentrums",
+      "ref": "rechenzentrum"
+    },
+    {
+      "count": 1,
+      "hyp": "reimer",
+      "ref": "reimar"
+    },
+    {
+      "count": 1,
+      "hyp": "rise",
+      "ref": "rice"
+    },
+    {
+      "count": 1,
+      "hyp": "romig",
+      "ref": "romich"
+    },
+    {
+      "count": 1,
+      "hyp": "srm",
+      "ref": "sam"
+    },
+    {
+      "count": 1,
+      "hyp": "säuling",
+      "ref": "seuling"
+    },
+    {
+      "count": 1,
+      "hyp": "uat",
+      "ref": "uet"
+    },
+    {
+      "count": 1,
+      "hyp": "verlängert",
+      "ref": "verlängern"
+    },
+    {
+      "count": 1,
+      "hyp": "logikverteilung",
+      "ref": "verteilung"
+    }
+  ],
+  "summary": {
+    "audio_secs": 1282.1375625,
+    "clips": 11,
+    "errors": 55,
+    "ref_words": 2413,
+    "total_ms": 12235.0,
+    "wer_final_weighted": 0.022793203481143803
+  }
+}

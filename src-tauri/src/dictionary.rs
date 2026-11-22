@@ -384,42 +384,124 @@ fn write_default_file(path: &std::path::Path) -> Result<()> {
 /// Exemplarische Startregeln (specs-Beispiele + verbreitete ASR-Hörfehler).
 /// Ersetzt/erweitert sie durch echte Fälle aus den Eval-Clips (specs 6).
 const DEFAULT_FILE: &str = r#"# Private Wispr — Wörterbuch (specs 4.5)
-# Phrase -> kanonische Schreibweise. Die Datei kann jederzeit im Editor
-# geändert werden und wirkt ab dem nächsten Diktat.
+# Erweitert aus den BT700-Eval-Clips vom 22.11.2026 (11 Clips, Baseline-WER
+# 4,8%): jeder neue Eintrag entspricht einem echten Erkennungsfehler.
 #   canonical: kanonische Schreibweise (ersetzter Text)
 #   aliases:   erkannte Schreibweisen/Sprachfehler des Modells
-#   profile:   optionale Profil-Zugehörigkeit (ohne = immer aktiv);
-#              aktiv geschaltet werden Profile in der Zeile "profiles:"
+# Datei jederzeit editierbar — wirkt ab dem nächsten Diktat.
 locale: de-DE
-profiles:
-  - it
 terms:
+  # --- KI-Werkzeuge (Eval bericht/mix/braindump) ---
+  - canonical: Copilot
+    aliases: [Cobalt, Cobilet]
+  - canonical: Copilot Studio
+    aliases: [Cobalt Studio, Cobilet Studio]
+  - canonical: GitHub
+    aliases: [GipTab, Giptab]
+  - canonical: Coding Agent
+    aliases: [Recording Agent]
+  - canonical: Human in the Loop
+    aliases: [Jungen in the Loop]
+  # --- Projekt-/IT-Begriffe ---
+  - canonical: Cutover
+    aliases: [Cut Over, Cut-Over]
+  - canonical: UAT
+    aliases: [UET, UIT]
+  - canonical: RACI-Matrix
+    aliases: [RAIC-Matrix]
+  - canonical: RICE-Scoring
+    aliases: [Rise Scoring, Rise-Scoring]
+  - canonical: PostgreSQL
+    aliases: [SquadsSQL, Brust-SquadsSQL]
+  - canonical: VPN
+    aliases: [VBN]
+  - canonical: VPN-Gateway
+    aliases: [VBN-Gateway]
+  - canonical: BIS Hub
+    aliases: [Bisab, Bisaab]
+  - canonical: IDocs
+    aliases: [Idocks]
+  - canonical: IDoc
+    aliases: [Idock]
+  - canonical: Serverauslastung
+    aliases: [Serva-Auslastung, Servaauslastung]
+  - canonical: Seeburger
+    aliases: [Seeborger]
+  - canonical: Tagging
+    aliases: [Taging]
+  - canonical: Workaround
+    aliases: [Workround]
+  - canonical: "Weber & Partner"
+    aliases: [Web und Butler, Weber und Partner]
+  - canonical: E-Mail
+    aliases: [E-Meil]
+  - canonical: Toggle
+    aliases: [Tocl, TOCL]
+  - canonical: Anbei
+    aliases: [Anleih]
+  - canonical: PBC
+    aliases: [PPC]
+  # --- Personen (Eval namen/notiz/braindump) ---
+  - canonical: Reimar Hausenblas
+    aliases: [Reimer Hausenblas, Reimerhausenblas, Reimer-Hausenblas]
+  - canonical: Klimmeck
+    aliases: [Klimmet, Klimmek]
+  - canonical: Philipp Buyny
+    aliases: [Philipp Beiney, Philipp Beine]
+  - canonical: Buyny
+    aliases: [Beiney, Beini]
+  - canonical: Marco Einecke
+    aliases: [Marco Eineke]
+  - canonical: Einecke
+    aliases: [Eineke]
+  - canonical: Beate
+    aliases: [Arte, Beati]
+  - canonical: Seuling
+    aliases: [Süling]
+  - canonical: Beate Seuling
+    aliases: [Beate Süling, Arte Seuling, Arte Süling, Beati Seuling, Beate Suling]
+  - canonical: Romich
+    aliases: [Rohmig, Romig]
+  - canonical: Rozewicki
+    aliases: [Rosovicki]
+  - canonical: Wieprecht
+    aliases: [Wiebrecht]
+  - canonical: Jaroslaw Depta
+    aliases: [Joslav Dapta, Jaroslaw Dapta, Joslav Depta]
+  - canonical: Depta
+    aliases: [Dapta]
+  - canonical: Fisnik
+    aliases: [Fisnick]
+  - canonical: Bauer
+    aliases: [Verbau, Verbauer]
+  # --- Wortformen-Fehler des Modells ---
+  - canonical: Abnahme
+    aliases: [Abnahmung]
+  - canonical: Freieinweisung
+    aliases: [Freienweisung]
+  - canonical: Datenbank
+    aliases: [Datenanbanken]
+  - canonical: Eingabetätigkeiten
+    aliases: [Eingabentätigkeiten]
+  - canonical: Generierungsanweisungen
+    aliases: [Generierungsanweisen]
+  - canonical: Heft
+    aliases: [Teft]
+  - canonical: im Hintergrund
+    aliases: [im Grund, in der Grund]
+  # --- Ursprüngliche Beispiel-Regeln ---
   - canonical: SharePoint
-    aliases:
-      - Share Point
-      - Scherpoint
-    profile: it
+    aliases: [Share Point, Scherpoint]
   - canonical: OCuLink
-    aliases:
-      - Ocu Link
-      - Okkulink
-    profile: it
+    aliases: [Ocu Link, Okkulink]
   - canonical: GitLab
-    aliases:
-      - Git Lab
-    profile: it
+    aliases: [Git Lab]
   - canonical: TypeScript
-    aliases:
-      - Type Script
-    profile: it
+    aliases: [Type Script]
   - canonical: Kubernetes
-    aliases:
-      - Kubernetis
-      - Kuber Netes
-    profile: it
+    aliases: [Kubernetis, Kuber Netes]
   - canonical: Markdown
-    aliases:
-      - Mark down
+    aliases: [Mark down]
 "#;
 
 /// Filler-Ganzwörter entfernen (de-aware): „ähm", „ähm," fallen inklusive

@@ -1,0 +1,10 @@
+Nächste Schritte.
+E-Commerce-UAT auf 24. oder 25.11. abstimmen und einladen: Reimar Hausenblas.
+WBZ Heft an den Fachbereich zur Prüfung übergeben, UAT-Termin neu planen: Thomas Klimmek / Reimar Hausenblas.
+Bestandsaufnahme der Tests und Unterstützungsbedarf klären: Michael Rozewicki / Reimar Hausenblas.
+Kurze Anleitung zur Reprozessierung je Prozess bereitstellen: Thomas Klimmek / Arne Hofmann.
+Prüfen, ob Metras in der Intercompany-Datenbank enthalten ist: Joachim Donner.
+Testbelege für die manuelle Rechnung bei Steffi Wieprecht / Jörg Engelmann anfordern: Holger Romich / Reimar Hausenblas 
+Termin zu IBAN, Lastschrift und Logik-Verteilung SAP/Seeburger ansetzen: Arne Hofmann.
+Workaround für 01.01.2027 und Terminleiste in der PM-Abstimmung klären: Reimar Hausenblas / Philipp Buyny.
+E-Mail-Trockentest je Domain vorbereiten: Reimar Hausenblas / Marko Einecke.

@@ -1,0 +1,15 @@
+E-Invoicing-Prozesse müssen fachlich getestet, technisch integriert und vor dem Jahreswechsel vollständig vorbereitet werden.
+2. Cutover-Pläne enthaltene Aktivitäten, Verantwortlichkeiten, Abhängigkeiten und die erforderlichen Transportzeitpunkte.
+3. Go-Live-Termine sollten wir erst bestätigen, wenn die notwendigen Tests und Freigaben vorliegen.
+4. UATs helfen uns dabei, die Lösungen aus Sicht der Fachbereiche oder Produktivsetzung abzunehmen.
+5. End-to-End-Tests prüfen nicht nur einzelne Komponenten, sondern die komplette Verarbeitungskette.
+6. Für jeden kritischen Prozess brauchen wir ein belastbares Fallback-Szenario.
+7. Änderungen an Aufwand, Budget oder Umfang dokumentieren wir über entsprechende Change Requests.
+8. Rollout-Planung berücksichtigen Standorte, Geräte, Ressourcen, Testphasen und Supportkapazitäten.
+9. Proof-of-Concept-Tests sollen früh zeigen, ob die geplante technische Lösung grundsätzlich funktioniert.
+10. RACI-Matrizen schaffen Klarheit darüber, wer verantwortlich, ausführend, beratend oder zu informieren ist.
+11. Für eine belastbare Wirkungsmessung benötigen wir zunächst eine Baseline.
+12. RICE-Scorings ermöglichen es uns, mehrere Use Cases anhand einheitlicher Kriterien zu priorisieren.
+13. Bei neuen KI-Vorhaben verwenden wir zur strukturierten Bewertung unser Gatekeeper-Modell.
+14. Human-in-Loop-Prozesse kombinieren Automatisierung mit einer bewussten menschlichen Prüfung und Freigabe.
+15. Bei der technischen Verarbeitung kontrollieren wir die relevanten Nachrichten, insbesondere das IDoc.

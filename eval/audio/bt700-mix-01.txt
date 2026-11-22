@@ -1,0 +1,30 @@
+Kurze Zusammenfassung zum Review am Donnerstag. Anwesend waren Müller, 
+Schmidt und ich, dazu Sandra Bauer von der Infrastruktur.
+
+Das Team von Weber & Partner liefert die neue Hardware bis zum
+18. Dezember, also drei Wochen später als geplant. Die Kosten für den
+Kubernetes-Cluster steigen damit von 40.000 auf 46.500 Euro. Die
+Serverauslastung liegt aktuell bei 78 Prozent.
+
+Offene Punkte: Schmidt kümmert sich bis Freitag, den 12. Dezember, um
+16 Uhr um das TLS-Zertifikat für den Reverse Proxy. Frau Bauer prüft,
+ob die PostgreSQL-Replikation ins Rechenzentrum Frankfurt reicht — die
+Latenz darf 50 Millisekunden nicht überschreiten. Ich aktualisiere die
+CI/CD-Pipeline, damit die Builds wieder unter 10 Minuten liegen,
+aktuell brauchen wir 14 Minuten.
+
+Das Ticket 2026-118 ist damit erledigt, die beiden offenen Bugs mit
+den Nummern 402 und 417 bleiben im nächsten Sprint.
+
+Noch das Thema KI-Tools: Wir verlängern die Copilot-Lizenzen für
+25 Nutzer um ein Jahr, das kostet 348 Euro pro Nutzer und Jahr. Das
+Team in Hannover testet bis Ende Januar Copilot Studio für die
+Ticketsuche, Frau Bauer begleitet den Piloten. Für die Dokumentation
+vergleichen wir Claude von Anthropic mit Google Gemini — Claude liefert
+bei unseren Berichten die besseren Zusammenfassungen, Gemini ist über
+das bestehende Google-Konto einfacher zu integrieren. Die Entscheidung
+treffen wir im Termin am 7. Januar.
+
+Nächster Termin: Mittwoch, 7. Januar, 9:30 Uhr, Konferenzraum 4 oder
+per Teams. Bis dahin sollte auch das VPN-Gateway in Hannover stehen,
+Frau Bauer bekommt dafür noch 20 Stunden Budget.
