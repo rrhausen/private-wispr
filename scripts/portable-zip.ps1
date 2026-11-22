@@ -22,6 +22,10 @@ New-Item -ItemType Directory $stage | Out-Null
 Copy-Item $exe $stage
 Copy-Item (Join-Path $release "*.dll") $stage
 
+# VAD-Modell (Silero, 1,2 MB, SHA-geprüft) neben die exe — lädt das Skript
+# bei Bedarf herunter (portabler Modus findet es exe-nah, s. vad.rs).
+& (Join-Path $PSScriptRoot "download-vad-model.ps1") -OutDir $stage
+
 $liesmich = @"
 Private Wispr $Version — portabel
 
@@ -33,6 +37,8 @@ Private Wispr $Version — portabel
    in den entpackten Ordner legen (neben private-wispr.exe — wird
    automatisch gefunden) oder über Einstellungen -> Modell herunterladen
    (705 MB, landet dann unter %LOCALAPPDATA%\PrivateWispr\models\).
+   Die kleine Datei silero-vad-v6.2-F32.gguf (Stille-Erkennung) liegt
+   bereits neben der exe.
 
 Bedienung (Kurzform):
 - Strg+Alt+Leertaste halten, sprechen, loslassen -> Text am Cursor.

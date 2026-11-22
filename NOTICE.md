@@ -25,6 +25,10 @@ npm-Pakete) werden gemäß ihrer Lizenzen als Abhängigkeiten genutzt.
 - transcribe.cpp (`transcribe-cpp`, Mozilla AI / handy-computer) — STT-Engine
 - handy-keys, handy-recorder (cjpais) — Hotkeys/Audio
 - GGUF-Konvertierungen überwiegend vom HF-User `handy-computer`
+- **Mitgegebenes Modell:** `silero-vad-v6.2-F32.gguf` (handy-computer/
+  silero-vad-v6.2-gguf, MIT) — GGUF-Konvertierung von snakers4/silero-vad
+  (Silero Team, MIT); wird unverändert in den Paketen (ZIP/NSIS)
+  weiterverbreitet, Download SHA256-gepinnt (scripts/download-vad-model.ps1)
 
 ## Recherche-Grundlage
 
