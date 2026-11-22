@@ -22,8 +22,7 @@ use crate::fitting::SeamContext;
 use log::debug;
 use std::time::Duration;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
-    COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationTextPattern, IUIAutomationTextRange,
@@ -146,14 +145,12 @@ unsafe fn char_after(range: &IUIAutomationTextRange) -> Option<String> {
     Some(range_text(&ra))
 }
 
-/// Text eines Ranges als String (UIA-Puffer freigeben nicht vergessen).
+/// Text eines Ranges als String. UIA liefert BSTRs — BSTR::Drop ruft
+/// SysFreeString; manuelles CoTaskMemFree auf dem Zeichenzeiger war
+/// Heap-Korruption (22.11., GUI-Runde: Absturz beim ersten Cursor-Diktat).
 unsafe fn range_text(range: &IUIAutomationTextRange) -> String {
     match range.GetText(-1) {
-        Ok(pw) => {
-            let s = pw.to_string();
-            CoTaskMemFree(Some(pw.as_ptr().cast()));
-            s
-        }
+        Ok(s) => s.to_string(),
         Err(_) => String::new(),
     }
 }
@@ -172,6 +169,23 @@ fn seam_from(before: Option<&str>, after: Option<&str>) -> SeamContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression des Heap-Crashes (22.11., GUI-Runde): wiederholtes
+    /// UIA-Lesen gegen das ECHTE Vordergrundfenster des Rechners. Der Crash
+    /// kam aus CoTaskMemFree auf einem BSTR-Zeiger (siehe range_text);
+    /// dieser Test beweist den ganzen Pfad lebendig — 30 Läufe ohne
+    /// Absturz, mit echten Naht-Zeichen, wenn das fokussierte Fenster ein
+    /// TextPattern hat. Bewusst #[ignore]: liest das echte Vordergrund-
+    /// fenster, nur gezielt laufen lassen.
+    #[test]
+    #[ignore = "liest UIA des echten Vordergrundfensters — nur gezielt laufen lassen"]
+    fn wiederholtes_uia_lesen_ohne_absturz() {
+        for i in 0..30 {
+            let ctx = read();
+            eprintln!("seam {i}: {ctx:?}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
 
     /// Zeichen davor/danach aus Ein-Zeichen-Texten.
     #[test]
