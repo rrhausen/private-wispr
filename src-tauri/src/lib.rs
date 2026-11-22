@@ -36,16 +36,12 @@ use log::{error, info, warn};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Aufnahmen unter dieser Schwelle gelten als versehentlich (Blitztext-Gate).
-const MIN_RECORDING_SECS: f64 = 0.3;
-
 pub struct AppState {
     /// Engine hinter dem SttEngine-Trait: im App-Betrieb der isolierte
     /// Worker-Prozess (specs 4.1) — GPU-Faults killen nur den Worker.
     pub engine: Arc<Mutex<Option<Box<dyn stt::SttEngine + Send>>>>,
     pub engine_info: Arc<Mutex<stt::EngineInfo>>,
     pub recording: Arc<Mutex<Option<recording::ActiveRecording>>>,
-    pub last_dictation: Arc<Mutex<Option<stt::TranscriptResult>>>,
     /// Gewähltes Eingabegerät (Name); `None` = System-Standard.
     pub mic: Arc<Mutex<Option<String>>>,
     /// Warm gehaltener Recorder: Das Gerät (v. a. Bluetooth-Headsets) bleibt
@@ -193,51 +189,6 @@ fn set_archive_audio(enabled: bool) -> Result<(), String> {
     let mut settings = settings::load();
     settings.archive_audio = enabled;
     settings::save(&settings).map_err(|e| e.to_string())
-}
-
-/// Das Spool-WAV eines Diktats archivieren oder löschen. Archiv (wenn
-/// aktiviert): %APPDATA%\PrivateWispr\audio\JJJJ-MM-TT\HH-MM-SS <mode>.wav
-/// — verschieben statt kopieren, %TEMP% räumt sich sonst nie auf.
-fn dispose_spool_wav(wav_path: &std::path::Path, mode: OutputMode) {
-    if settings::load().archive_audio {
-        match archive_dir() {
-            Ok(dir) => {
-                let dest = dir.join(format!(
-                    "{} {}.wav",
-                    chrono::Local::now().format("%H-%M-%S"),
-                    match mode {
-                        OutputMode::Cursor => "cursor",
-                        OutputMode::Handoff => "handoff",
-                    }
-                ));
-                if std::fs::rename(wav_path, &dest).is_ok() {
-                    info!("Audio archiviert: {}", dest.display());
-                } else if let Err(e) = std::fs::copy(wav_path, &dest)
-                    .and_then(|_| std::fs::remove_file(wav_path))
-                {
-                    // Andere Laufwerke/Partitionen: rename geht nicht — kopieren.
-                    warn!("Audio nicht archivierbar ({e}): {}", wav_path.display());
-                } else {
-                    info!("Audio archiviert (kopiert): {}", dest.display());
-                }
-            }
-            Err(e) => warn!("Archiv-Ordner nicht anlegbar ({e}) — Audio bleibt: {}", wav_path.display()),
-        }
-        return;
-    }
-    if let Err(e) = std::fs::remove_file(wav_path) {
-        warn!("Spool-WAV nicht löschbar ({e}): {}", wav_path.display());
-    }
-}
-
-fn archive_dir() -> anyhow::Result<std::path::PathBuf> {
-    let dir = dirs::data_dir()
-        .ok_or_else(|| anyhow::anyhow!("APPDATA nicht ermittelbar"))?
-        .join("PrivateWispr")
-        .join("audio")
-        .join(chrono::Local::now().format("%Y-%m-%d").to_string());
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }
 
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
@@ -394,7 +345,6 @@ pub fn run() {
                 engine: Arc::new(Mutex::new(None)),
                 engine_info: Arc::new(Mutex::new(stt::EngineInfo::default())),
                 recording: Arc::new(Mutex::new(None)),
-                last_dictation: Arc::new(Mutex::new(None)),
                 mic: Arc::new(Mutex::new(initial.mic_device)),
                 mic_warm: Arc::new(Mutex::new(None)),
                 focus_at_start: Mutex::new(None),
@@ -699,45 +649,64 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
     }
     let spooled = stopped.spooled;
 
-    if spooled.duration_secs < MIN_RECORDING_SECS {
-        overlay_emit(app, OverlayPayload { phase: "done", message: Some("Zu kurz".into()), level: None });
-        overlay_hide_later(app, Duration::from_millis(700));
-        return;
-    }
-
     overlay_emit(app, OverlayPayload { phase: "transcribing", message: None, level: None });
     let engine = state.engine.clone();
-    let last = state.last_dictation.clone();
     let handle = app.clone();
     std::thread::spawn(move || {
         // Wörterbuch je Diktat frisch laden (Datei ist jederzeit editierbar);
         // Ladefehler werden in load() geloggt und ergeben ein leeres Wörterbuch.
         let dict = dictionary::Dictionary::load();
-        let vocabulary = dict.vocabulary();
         let mut guard = engine.lock().unwrap();
-        let Some(engine) = guard.as_mut() else { return };
-        if !vocabulary.is_empty() {
-            info!("Decode mit {} Fachwörtern aus dem Wörterbuch", vocabulary.len());
-        }
-        match engine.transcribe(&spooled.samples, vocabulary) {
-            Ok(result) => {
-                info!(
-                    "Transkript ({} s Audio, {} ms): {}",
-                    spooled.duration_secs, result.transcription_ms, result.text
+        // Engine weg (z. B. Worker-Crash): sichtbar melden statt still
+        // zurückkehren — sonst bliebe die Pille in „transcribing" hängen.
+        let Some(engine) = guard.as_mut() else {
+            error!("Diktat verworfen: Engine nicht bereit");
+            overlay_emit(
+                &handle,
+                OverlayPayload {
+                    phase: "error",
+                    message: Some("Spracherkennung nicht bereit — siehe Log".into()),
+                    level: None,
+                },
+            );
+            overlay_hide_later(&handle, Duration::from_secs(3));
+            return;
+        };
+        // Diktat-Verarbeitung (GLOSSARY): die stille Pipeline inkl. Audio-
+        // Politik (specs 4.8) steckt im tiefen Modul — derselbe Code, den
+        // auch der Selftest misst. Naht-Kontext (Zeichen am Cursor der
+        // Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
+        let outcome = dictation::process(
+            &spooled,
+            mode,
+            &mut **engine,
+            &dict,
+            fitting::SeamContext::none(),
+            settings::load().archive_audio,
+        );
+        match outcome {
+            dictation::DictationOutcome::TooShort { .. } => {
+                overlay_emit(&handle, OverlayPayload { phase: "done", message: Some("Zu kurz".into()), level: None });
+                overlay_hide_later(&handle, Duration::from_millis(700));
+            }
+            dictation::DictationOutcome::Failed(msg) => {
+                error!("Transkription fehlgeschlagen: {msg}");
+                overlay_emit(
+                    &handle,
+                    OverlayPayload { phase: "error", message: Some(msg), level: None },
                 );
+                overlay_hide_later(&handle, Duration::from_secs(3));
+            }
+            dictation::DictationOutcome::Transcribed {
+                raw,
+                final_text,
+                applied,
+                dictionary_version,
+                audio_secs,
+                transcription_ms,
+                ..
+            } => {
                 let info = engine.info().clone();
-                // Audio-Verwertung (specs 4.8): archivieren (Einstellung)
-                // oder direkt nach der Transkription löschen.
-                dispose_spool_wav(&spooled.wav_path, mode);
-                // Regel-Pipeline (specs 4.5/4.6): NFC → Filler → Phrasen-
-                // Regeln → Text-Fitting. Naht-Kontext (Zeichen am Cursor
-                // der Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
-                let outcome = dict.apply(&result.text);
-                if !outcome.applied.is_empty() {
-                    info!("Wörterbuch angewandt: {:?}", outcome.applied);
-                }
-                let final_text = fitting::fit(&outcome.text, &fitting::SeamContext::none());
-                *last.lock().unwrap() = Some(result.clone());
                 // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
                 // history_mode protokolliert, was tatsächlich passiert ist
                 // („clipboard" = Fokus-Wechsel-Fallback).
@@ -792,10 +761,10 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     "pw://last",
                     LastPayload {
                         text: final_text.clone(),
-                        raw_text: result.text.clone(),
-                        applied_rules: outcome.applied.clone(),
-                        audio_secs: spooled.duration_secs,
-                        transcription_ms: result.transcription_ms,
+                        raw_text: raw.clone(),
+                        applied_rules: applied.clone(),
+                        audio_secs,
+                        transcription_ms,
                         target,
                     },
                 );
@@ -804,12 +773,12 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 // hier darf das Diktat nicht ungeschehen machen.
                 let entry = history::NewEntry {
                     mode: history_mode.to_string(),
-                    raw_transcript: result.text.clone(),
+                    raw_transcript: raw.clone(),
                     final_text: final_text.clone(),
-                    dictionary_version: dict.version.clone(),
-                    applied: outcome.applied.clone(),
+                    dictionary_version,
+                    applied,
                     target_app: focus_snap.as_ref().and_then(|s| s.process.clone()),
-                    duration_s: spooled.duration_secs,
+                    duration_s: audio_secs,
                     model: info.model_name.clone(),
                     engine: info.backend.clone(),
                 };
@@ -820,22 +789,6 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 }
                 overlay_emit(&handle, OverlayPayload { phase: "done", message: done_msg, level: None });
                 overlay_hide_later(&handle, Duration::from_millis(900));
-            }
-            Err(e) => {
-                error!("Transkription fehlgeschlagen: {e:#}");
-                // Fehlgeschlagene Diktate gelten ebenfalls der Archiv-Regel:
-                // aktiviert → ins Archiv (Fehlersuche/Retry), sonst liegt das
-                // WAV weiter in %TEMP% (Pfad im Log).
-                if settings::load().archive_audio {
-                    dispose_spool_wav(&spooled.wav_path, mode);
-                } else {
-                    warn!("Audio aufbewahrt für Retry: {}", spooled.wav_path.display());
-                }
-                overlay_emit(
-                    &handle,
-                    OverlayPayload { phase: "error", message: Some(e.to_string()), level: None },
-                );
-                overlay_hide_later(&handle, Duration::from_secs(3));
             }
         }
     });

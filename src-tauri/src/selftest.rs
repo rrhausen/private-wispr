@@ -51,17 +51,36 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
 
     let samples = read_audio_16k_mono(path)?;
     let audio_secs = samples.len() as f64 / 16_000.0;
-    // Wörterbuch mitmessen (specs 4.5 + 6): Vocabulary in den Decode, danach
-    // Regel-Pipeline auf das Rohtranskript — Keimzelle für WER-/Fachbegriff-
-    // Metriken auf den Eval-Clips.
+    // Dieselbe Diktat-Verarbeitung wie die App (per Konstruktion, nicht per
+    // hand-gewebter Kopie): Vocabulary in den Decode, Regeln, Fitting —
+    // Keimzelle für WER-/Fachbegriff-Metriken auf den Eval-Clips.
     let dict = crate::dictionary::Dictionary::load();
-    let t0 = std::time::Instant::now();
-    let result = engine
-        .transcribe(&samples, dict.vocabulary())
-        .with_context(|| format!("Transkription fehlgeschlagen: {}", path.display()))?;
-    let total_ms = t0.elapsed().as_millis();
-    let outcome = dict.apply(&result.text);
-    let fitted = crate::fitting::fit(&outcome.text, &crate::fitting::SeamContext::none());
+    let spool = crate::recording::SpooledRecording {
+        samples,
+        wav_path: std::path::PathBuf::new(), // Selftest liest selbst, kein Spool-WAV
+        duration_secs: audio_secs,
+    };
+    let outcome = crate::dictation::process(
+        &spool,
+        crate::recording::OutputMode::Cursor,
+        &mut engine,
+        &dict,
+        crate::fitting::SeamContext::none(),
+        false,
+    );
+    let crate::dictation::DictationOutcome::Transcribed {
+        raw,
+        final_text,
+        applied,
+        language,
+        transcription_ms,
+        pipeline_ms,
+        ..
+    } = outcome
+    else {
+        anyhow::bail!("Transkription fehlgeschlagen: {}", path.display());
+    };
+    let total_ms = pipeline_ms;
 
     let rt = if audio_secs > 0.0 {
         Some(total_ms as f64 / 1000.0 / audio_secs)
@@ -71,13 +90,13 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
     let mut out = serde_json::json!({
         "wav": path.display().to_string(),
         "audio_secs": audio_secs,
-        "transcription_ms": result.transcription_ms,
+        "transcription_ms": transcription_ms,
         "total_ms": total_ms,
         "realtime_factor": rt,
-        "language": result.language,
-        "text": fitted,
-        "raw_text": result.text,
-        "applied_rules": outcome.applied,
+        "language": language,
+        "text": final_text,
+        "raw_text": raw,
+        "applied_rules": applied,
         "dictionary_version": dict.version,
     });
     // Base-Felder (Modell, Backend, Load-Zeit) dazumischen.
@@ -120,9 +139,9 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
         t_start.elapsed().as_millis()
     );
 
-    // Wörterbuch einmal laden; die Pipeline läuft pro Clip wie in der App.
+    // Wörterbuch einmal laden; die Diktat-Verarbeitung pro Clip ist dieselbe
+    // Funktion wie in der App (dictation::process) — keine hand-gewebte Kopie.
     let dict = crate::dictionary::Dictionary::load();
-    let vocabulary = dict.vocabulary();
 
     struct Row {
         name: String,
@@ -148,21 +167,38 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
         let name = clip.file_stem().unwrap_or_default().to_string_lossy().into_owned();
         let samples = read_audio_16k_mono(clip)?;
         let audio_secs = samples.len() as f64 / 16_000.0;
-        let t0 = std::time::Instant::now();
-        let result = engine
-            .transcribe(&samples, vocabulary)
-            .with_context(|| format!("Transkription fehlgeschlagen: {}", clip.display()))?;
-        let mut clip_ms = t0.elapsed().as_millis() as f64;
+        let spool = crate::recording::SpooledRecording {
+            samples,
+            wav_path: std::path::PathBuf::new(), // Selftest liest selbst, kein Spool-WAV
+            duration_secs: audio_secs,
+        };
+        let outcome = crate::dictation::process(
+            &spool,
+            crate::recording::OutputMode::Cursor,
+            &mut engine,
+            &dict,
+            crate::fitting::SeamContext::none(),
+            false,
+        );
+        let crate::dictation::DictationOutcome::Transcribed {
+            raw,
+            final_text,
+            transcription_ms,
+            pipeline_ms,
+            ..
+        } = outcome
+        else {
+            anyhow::bail!("Transkription fehlgeschlagen: {}", clip.display());
+        };
+        let mut clip_ms = pipeline_ms as f64;
         clip_ms = clip_ms.max(1.0);
-        let outcome = dict.apply(&result.text);
-        let fitted = crate::fitting::fit(&outcome.text, &crate::fitting::SeamContext::none());
 
         let gt = std::fs::read_to_string(clip.with_extension("txt")).ok();
         let (wer_raw, wer_final, errors) = if let Some(gt) = &gt {
             let reference = crate::eval::normalize(gt);
-            let raw = crate::eval::wer(&reference, &crate::eval::normalize(&result.text));
+            let raw_wer = crate::eval::wer(&reference, &crate::eval::normalize(&raw));
             let (fin, ops) = {
-                let (r, ops) = crate::eval::align(&reference, &crate::eval::normalize(&fitted));
+                let (r, ops) = crate::eval::align(&reference, &crate::eval::normalize(&final_text));
                 (r, ops)
             };
             let (subs, dels) = crate::eval::error_pairs(&ops);
@@ -174,7 +210,7 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
             }
             sum_err += fin.substitutions + fin.deletions + fin.insertions;
             sum_len += fin.ref_len;
-            (Some(raw.wer()), Some(fin.wer()), fin.substitutions + fin.deletions)
+            (Some(raw_wer.wer()), Some(fin.wer()), fin.substitutions + fin.deletions)
         } else {
             (None, None, 0)
         };
@@ -193,12 +229,12 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
             "clip": name,
             "has_ground_truth": gt.is_some(),
             "audio_secs": audio_secs,
-            "transcription_ms": result.transcription_ms,
+            "transcription_ms": transcription_ms,
             "total_ms": clip_ms,
             "wer_raw": wer_raw,
             "wer_final": wer_final,
-            "raw_text": result.text,
-            "final_text": fitted,
+            "raw_text": raw,
+            "final_text": final_text,
         }));
         println!("  ✓ {} ({:.1} s)", name, audio_secs);
     }

@@ -40,6 +40,8 @@ pub enum DictationOutcome {
         applied: Vec<AppliedRule>,
         /// Version der Wörterbuch-Datei beim Diktat.
         dictionary_version: String,
+        /// Erkannte Sprache (Engine-Angabe; Selftest berichtet sie).
+        language: Option<String>,
         audio_secs: f64,
         transcription_ms: u128,
         /// Gesamtzeit der Pipeline inkl. Regeln/Fitting (Eval-Kennzahl).
@@ -101,6 +103,7 @@ pub fn process(
         final_text,
         applied: outcome.applied,
         dictionary_version: dict.version.clone(),
+        language: result.language,
         audio_secs: spool.duration_secs,
         transcription_ms: result.transcription_ms,
         pipeline_ms,
@@ -110,7 +113,11 @@ pub fn process(
 /// Das Spool-WAV eines Diktats archivieren oder löschen. Archiv (wenn
 /// aktiviert): `%APPDATA%\PrivateWispr\audio\JJJJ-MM-TT\HH-MM-SS <mode>.wav`
 /// — verschieben statt kopieren, %TEMP% räumt sich sonst nie auf.
+/// Leer = Aufrufer ohne Spool-Datei (Selftest), dann gibt es nichts zu tun.
 fn dispose_wav(wav_path: &Path, mode: OutputMode, archive: bool) {
+    if wav_path.as_os_str().is_empty() {
+        return;
+    }
     if archive {
         match archive_dir() {
             Ok(dir) => {
