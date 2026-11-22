@@ -35,3 +35,11 @@ _Avoid_: Read-Receipt (englisch), Bestätigung allein (zu unspezifisch)
 **Wörterbuch**:
 Die editierbare Regelsammlung, die erkannte Schreibweisen in kanonische überführt — Kanones wirken zusätzlich als Fachwortschatz in der Erkennung.
 _Avoid_: Ersetzungsliste, Fachwortschatz allein (ist nur eine Wirkung)
+
+**Sprach-Aktivitätsprüfung (VAD)**:
+Der lokale Silero-Durchlauf NACH dem Stopp einer Aufnahme, der misst, wo im Audio Sprache liegt — als Grundlage des Qualitätstors der Diktat-Verarbeitung: Aufnahmen ohne Sprache werden nicht transkribiert (Halluzinations-Filter), zu kurze nach Sprechzeit (statt Gesamtdauer) verworfen. Schneiden tut die Prüfung nichts — die volle Aufnahme geht zur Engine (Kürzung verschlechterte die Erkennung messbar, ADR 0004).
+_Avoid_: Stille-Erkennung (nur eine Folge), Auto-Stop (gibt es bewusst nicht — die Taste entscheidet)
+
+**Qualitätstor**:
+Die Entscheidung der Diktat-Verarbeitung, OB eine Aufnahme überhaupt transkribiert wird: zu kurz (Gesamtdauer), keine Sprache, zu wenig gesprochene Zeit. Ein durchfallenes Diktat wird gemeldet („Zu kurz"/„Keine Sprache erkannt") und sein Audio ordentlich entsorgt — nie still verworfen.
+_Avoid_: Filter (zu vage), Gate (englisch)
