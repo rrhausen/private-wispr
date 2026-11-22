@@ -3,22 +3,23 @@
 //! M1: Hotkeys sind frei konfigurierbar (specs 4.3, Whispering-Stil). Die
 //! Belegung kommt aus den Settings und wird zur Laufzeit umgehängt.
 //!
-//! Es gibt genau EINEN KeyboardListener, erstellt beim App-Start, und dessen
-//! Event-Loop bedient beides: die PTT-Kanten der registrierten Hotkeys und den
-//! Key-Capture (als Zustandsautomat, nicht als zweiter Hook). Ein früherer
-//! Entwurf erstellte pro Capture einen zweiten Listener — der war in manchen
-//! Umgebungen stumm (Bug 25.10.), während der beim Start erstellte Hook in
-//! allen Instanzen zuverlässig lieferte. Die Kanten-Logik ist hier
-//! eigenständig implementiert (reine Funktionen, unit-getestet); handy-keys
-//! liefert nur die Roh-Events und das Blockieren registrierter Kombinationen
-//! gegenüber anderen Apps.
+//! Es gibt genau EINEN KeyboardListener, erstellt beim App-Start, dessen
+//! Event-Loop die PTT-Kanten der registrierten Hotkeys verarbeitet. Der
+//! Key-Capture für die Einstellungen lebt bewusst im Frontend (Webview-
+//! Keydown, siehe settings.tsx): Der Hook ist dort nicht zuverlässig
+//! erreichbar (Installation in manchen Prozess-Kontexten eine Lotterie,
+//! Bug 25.10.; UIPI) — Entscheidung als ADR 0001 festgehalten.
+//!
+//! Die Kanten-Logik ist hier eigenständig implementiert (reine Funktionen,
+//! unit-getestet); handy-keys liefert nur die Roh-Events und das Blockieren
+//! registrierter Kombinationen gegenüber anderen Apps.
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use handy_keys::{BlockingHotkeys, Hotkey, Key, KeyboardListener, KeyEvent, Modifiers};
+use handy_keys::{BlockingHotkeys, Hotkey, Key, KeyboardListener, KeyEvent};
 use log::{error, info, warn};
 use tauri::{AppHandle, Emitter};
 
@@ -38,21 +39,9 @@ static BLOCKING: OnceLock<BlockingHotkeys> = OnceLock::new();
 static ACTIVE: Mutex<Vec<(Hotkey, OutputMode)>> = Mutex::new(Vec::new());
 static PRESSED: Mutex<Vec<OutputMode>> = Mutex::new(Vec::new());
 
-/// Abbruch-Flag für den laufenden Capture (setzt der UI-Command).
-static CAPTURE_CANCEL: AtomicBool = AtomicBool::new(false);
-const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
-
 /// Tastatur-Hook verbunden (Selbsttest bestanden)? UI-Status via
 /// `pw://hook-status` + Command `hook_status`.
 static HOOK_READY: AtomicBool = AtomicBool::new(false);
-
-/// Laufender Key-Capture mit dem Zeitpunkt, an dem er abläuft.
-struct ActiveCapture {
-    app: AppHandle,
-    deadline: Instant,
-    eval: CaptureEval,
-}
-static CAPTURE: Mutex<Option<ActiveCapture>> = Mutex::new(None);
 
 pub fn start(app: AppHandle) -> anyhow::Result<()> {
     let settings = crate::settings::load();
@@ -134,8 +123,6 @@ fn run_hotkey_loop(app: AppHandle) {
     set_ready(false);
 
     loop {
-            capture_tick();
-
             // Empfangen (10-ms-Takt) und Kanten verarbeiten.
             if let Some(l) = listener.as_ref() {
                 let mut died = false;
@@ -199,8 +186,7 @@ fn run_hotkey_loop(app: AppHandle) {
             // belegt) und prüfen, ob sie den eigenen Hook erreicht. In der
             // Startphase nach 300 ms; nach dem ersten Erfolg nur noch bei
             // langer Stille (120 s), um auch späteres Stillwerden zu
-            // bemerken. Während des Captures auslassen, damit die F24
-            // nicht als neue Kombination landet.
+            // bemerken.
             let probe_delay = if connected {
                 Duration::from_secs(120)
             } else {
@@ -213,7 +199,7 @@ fn run_hotkey_loop(app: AppHandle) {
                 && listener_since.elapsed() >= Duration::from_millis(300)
                 && ((!connected && listener_since.elapsed() >= probe_delay)
                     || (connected && silence >= Duration::from_secs(120)));
-            if want_probe && CAPTURE.lock().unwrap().is_none() {
+            if want_probe {
                 send_self_probe();
                 probe_baseline = last_event_at;
                 probe_sent_at = Some(Instant::now());
@@ -391,31 +377,8 @@ fn is_function_key(display: &str) -> bool {
         && display[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// Ein Key-Event verarbeiten: Diagnose-Log während des Captures, Capture-
-/// Bewertung, PTT-Kanten (Down/Up je Modus).
+/// Ein Key-Event verarbeiten: PTT-Kanten (Down/Up je Modus).
 fn handle_event(app: &AppHandle, ev: &KeyEvent) {
-    if CAPTURE.lock().unwrap().is_some() {
-        info!(
-            "[Diagnose] {} key={:?} mods={:?}",
-            if ev.is_key_down { "key_down" } else { "key_up" },
-            ev.key,
-            ev.modifiers
-        );
-    }
-
-    let mut done: Option<Option<String>> = None;
-    {
-        let mut cap = CAPTURE.lock().unwrap();
-        if let Some(run) = cap.as_mut() {
-            if let Some(result) = capture_eval(&mut run.eval, ev) {
-                done = Some(result);
-            }
-        }
-    }
-    if let Some(result) = done {
-        finish_capture(result);
-    }
-
     let edges = {
         let mut pressed = PRESSED.lock().unwrap();
         ptt_edges(&ACTIVE.lock().unwrap(), &mut pressed, ev)
@@ -433,41 +396,6 @@ fn handle_event(app: &AppHandle, ev: &KeyEvent) {
             (OutputMode::Cursor, false) => crate::on_ptt_up(app),
         }
     }
-}
-
-/// Capture-Ablauf/Abbruch unabhängig von Events prüfen (Timeout).
-fn capture_tick() {
-    let expired = {
-        let cap = CAPTURE.lock().unwrap();
-        match cap.as_ref() {
-            Some(run) => CAPTURE_CANCEL.load(Ordering::SeqCst) || Instant::now() >= run.deadline,
-            None => false,
-        }
-    };
-    if expired {
-        if CAPTURE_CANCEL.load(Ordering::SeqCst) {
-            info!("Key-Capture: Abbruch-Befehl (UI)");
-        } else {
-            info!("Key-Capture: 15 s Timeout ohne Taste");
-        }
-        finish_capture(None);
-    }
-}
-
-/// Laufenden Capture beenden und das Ergebnis an die UI emittieren (null bei
-/// Abbruch/Timeout). Tut nichts, wenn kein Capture läuft.
-fn finish_capture(result: Option<String>) {
-    let run = CAPTURE.lock().unwrap().take();
-    let Some(run) = run else { return };
-    CAPTURE_CANCEL.store(false, Ordering::SeqCst);
-    if let Some(hotkey) = &result {
-        info!("Key-Capture: {hotkey}");
-    } else {
-        info!("Key-Capture abgebrochen (Escape/Timeout/Abbruch-Befehl)");
-    }
-    let _ = run
-        .app
-        .emit("pw://hotkey-captured", serde_json::json!({ "hotkey": result }));
 }
 
 /// PTT-Kanten aus einem Roh-Event ableiten (Eigenimplementierung nach dem
@@ -501,81 +429,10 @@ fn ptt_edges(
     edges
 }
 
-/// Zustand eines laufenden Captures.
-struct CaptureEval {
-    seen_modifiers: Modifiers,
-    saw_key: bool,
-}
-
-impl CaptureEval {
-    fn new() -> Self {
-        Self {
-            seen_modifiers: Modifiers::empty(),
-            saw_key: false,
-        }
-    }
-}
-
-/// Ein Event im laufenden Capture bewerten; `Some(ergebnis)` beendet ihn
-/// (Ergebnis null = Abbruch). Zwei Fälle: Ein Nicht-Modifier-Key beendet mit
-/// der Kombination aus gehaltenen Modifiern + Taste; nur Modifier gedrückt und
-/// wieder losgelassen ergeben eine Modifier-only-Kombination (dafür werden
-/// die Modifier über alle key_down-Events akkumuliert, weil beim Loslassen
-/// der erste schon fehlt).
-///
-/// Seitenspezifisch: handy-keys liefert Strg/Alt/Shift/Win je als linke oder
-/// rechte Taste — die Seite wird bewusst erhalten („Strg rechts" ist als
-/// Diktattaste wertvoll, weil sie im Schreiballtag unbenutzt ist). Compound-
-/// Belegungen wie die Defaults („ctrl+alt+space") matchen weiterhin beide
-/// Seiten; nur neu gecapturete Kombis sind seitengebunden.
-fn capture_eval(st: &mut CaptureEval, ev: &KeyEvent) -> Option<Option<String>> {
-    if !ev.is_key_down {
-        if !st.saw_key && !st.seen_modifiers.is_empty() {
-            return Some(Hotkey::new(st.seen_modifiers, None).ok().map(|h| h.to_handy_string()));
-        }
-        return None;
-    }
-    if let Some(key) = ev.key {
-        if key == Key::Escape {
-            return Some(None);
-        }
-        st.saw_key = true;
-        if let Ok(hotkey) = Hotkey::new(ev.modifiers, key) {
-            return Some(Some(hotkey.to_handy_string()));
-        }
-        return None;
-    }
-    st.seen_modifiers |= ev.modifiers;
-    None
-}
-
-/// Key-Capture starten (asynchron): Ergebnis via Event `pw://hotkey-captured`,
-/// Payload `{ "hotkey": "<kombination>" }` oder `null` bei Abbruch/Timeout.
-/// Escape bricht ab (specs 4.3). Läuft schon ein Capture, wird der Aufruf
-/// ignoriert.
-pub fn start_capture(app: AppHandle) {
-    let mut cap = CAPTURE.lock().unwrap();
-    if cap.is_some() {
-        return;
-    }
-    CAPTURE_CANCEL.store(false, Ordering::SeqCst);
-    *cap = Some(ActiveCapture {
-        app,
-        deadline: Instant::now() + CAPTURE_TIMEOUT,
-        eval: CaptureEval::new(),
-    });
-    drop(cap);
-    info!("Key-Capture gestartet — warte auf Taste (Esc bricht ab, 15 s Timeout)");
-}
-
-/// Laufenden Capture abbrechen.
-pub fn cancel_capture() {
-    CAPTURE_CANCEL.store(true, Ordering::SeqCst);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use handy_keys::Modifiers;
 
     fn ev_down(mods: Modifiers, key: Option<Key>) -> KeyEvent {
         KeyEvent {
@@ -597,31 +454,6 @@ mod tests {
 
     fn active_single(hotkey: &str, mode: OutputMode) -> Vec<(Hotkey, OutputMode)> {
         vec![(hotkey.parse().unwrap(), mode)]
-    }
-
-    /// Der Capture sieht von handy-keys stets seitenspezifische Modifier
-    /// (CtrlLeft/OptLeft …) — die Seite wird bewusst erhalten, damit z. B.
-    /// „Strg rechts + Leertaste" als eigene Diktattaste belegt werden kann.
-    #[test]
-    fn capture_behaelt_seiten_modifikatoren() {
-        let mut st = CaptureEval::new();
-        // Modifier-Events (key=None) akkumulieren, dann Taste:
-        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
-        assert_eq!(
-            capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, None)),
-            None
-        );
-        let result = capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_LEFT, Some(Key::M)));
-        assert_eq!(result, Some(Some("ctrl_left+alt_left+m".into())));
-    }
-
-    #[test]
-    fn capture_rechte_strg_allein() {
-        // Nur rechte Strg gedrückt und losgelassen → Modifier-only „Strg rechts".
-        let mut st = CaptureEval::new();
-        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_RIGHT, None)), None);
-        let result = capture_eval(&mut st, &ev_up(Modifiers::CTRL_RIGHT, None));
-        assert_eq!(result, Some(Some("ctrl_right".into())));
     }
 
     /// Seitengebunden vs. Compound: „ctrl_right+space" matcht nur die rechte
@@ -684,40 +516,13 @@ mod tests {
         assert!(validate("lalt+shift").is_ok());
     }
 
-    /// Modifier-only-Capture bleibt parsebar; Compound-Belegungen (alte
-    /// Settings) matchen weiterhin gemischte Seiten.
+    /// Compound-Belegungen (Form der alten Defaults) matchen weiterhin
+    /// gemischte Seiten — alte Settings bleiben funktional gleich.
     #[test]
-    fn capture_modifier_only_und_compound_roundtrip() {
-        let mut st = CaptureEval::new();
-        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT, None)), None);
-        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT, None)), None);
-        let result = capture_eval(&mut st, &ev_up(Modifiers::CTRL_LEFT, None));
-        assert_eq!(result, Some(Some("ctrl_left+alt_right".into())));
-
-        // Als Compound-Muster „ctrl+alt" (Form der Defaults) muss das
-        // gemischte Seiten-Event genauso matchen wie die Reinform rechts.
+    fn compound_muster_matchen_gemischte_seiten() {
         let round: Hotkey = "ctrl+alt".parse().unwrap();
         assert!(round.modifiers.matches(Modifiers::CTRL_LEFT | Modifiers::OPT_RIGHT));
         assert!(round.modifiers.matches(Modifiers::CTRL_RIGHT | Modifiers::OPT_RIGHT));
-    }
-
-    /// Ein key_up ohne vorherige Modifier (z. B. Rest einer Taste, die vor dem
-    /// Capture-Start gedrückt wurde) darf den Capture nicht beenden.
-    #[test]
-    fn capture_ignoriert_fremdes_key_up() {
-        let mut st = CaptureEval::new();
-        assert_eq!(capture_eval(&mut st, &ev_up(Modifiers::empty(), Some(Key::F12))), None);
-        // Und danach geht es normal weiter:
-        assert_eq!(
-            capture_eval(&mut st, &ev_down(Modifiers::empty(), Some(Key::F9))),
-            Some(Some("f9".into()))
-        );
-    }
-
-    #[test]
-    fn capture_escape_bricht_ab() {
-        let mut st = CaptureEval::new();
-        assert_eq!(capture_eval(&mut st, &ev_down(Modifiers::empty(), Some(Key::Escape))), Some(None));
     }
 
     /// PTT: Down bei passendem key_down, Up beim key_up derselben Taste.

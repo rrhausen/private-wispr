@@ -20,9 +20,10 @@ Vulkan), Tauri 2 (Rust + React/TS). Deutsch zuerst, Englisch second.
 src-tauri/src/
   lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
   hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up) — frei
-                konfigurierbar (M1): Key-Capture, Konflikt-Validierung,
-                Umregistrierung zur Laufzeit mit Rollback. Cursor = Halten
-                (PTT), Hand-off = Toggle (Antippen startet/stoppt)
+                konfigurierbar (M1): Konflikt-Validierung, Umregistrierung
+                zur Laufzeit mit Rollback. Cursor = Halten (PTT), Hand-off =
+                Toggle (Antippen startet/stoppt). Key-Capture bewusst im
+                Frontend (ADR 0001: docs/adr/0001-key-capture-im-frontend.md)
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
                 WAV wird nach Transkription default gelöscht (specs 4.8)
