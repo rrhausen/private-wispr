@@ -186,8 +186,9 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 Ablauf, Clipliste und Aufnahme-Anleitung: [`eval/README.md`](eval/README.md).
 Stand: WER-Runner ✅ (`--selftest <ordner>`), BT700-Korpus gemessen
 (11 Clips, **WER final 1,9 %** nach Regel-Ableitung; Reports in
-`eval/reports/`). Offen: WL5024-Clips vom Arbeitslaptop, Fachbegriff-Quote
-als eigene Metrik.
+`eval/reports/`). Offen: Fachbegriff-Quote als eigene Metrik. Der
+Headset-Vergleich über WL5024-Clips vom Arbeitslaptop ist vom Nutzer
+abgesagt (22.11.2026).
 
 ## Bekannte Issues
 
