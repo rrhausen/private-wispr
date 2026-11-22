@@ -9,6 +9,7 @@
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
 mod dictionary;
+pub mod dictation;
 pub mod engine_worker;
 pub mod eval;
 mod feedback;
