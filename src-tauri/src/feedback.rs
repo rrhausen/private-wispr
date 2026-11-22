@@ -18,7 +18,7 @@ use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODE
 /// kehrt sofort zurück; schlägt es fehl (z. B. kein Audiogerät), ist das nur
 /// eine Warnung im Log — das Diktat selbst ist davon unberührt.
 pub fn play_click_if_enabled() {
-    if !crate::settings::load().feedback_sound {
+    if !crate::settings::current().feedback_sound {
         return;
     }
     if let Err(e) = play_click() {

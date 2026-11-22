@@ -168,7 +168,7 @@ fn clear_in(conn: &Connection) -> Result<()> {
 
 pub fn insert(entry: &NewEntry) -> Result<()> {
     let conn = open()?;
-    insert_into(&conn, entry, crate::settings::load().history_retention_days)
+    insert_into(&conn, entry, crate::settings::current().history_retention_days)
 }
 
 pub fn list(limit: u32) -> Vec<Entry> {

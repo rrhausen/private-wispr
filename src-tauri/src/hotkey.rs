@@ -44,7 +44,7 @@ static PRESSED: Mutex<Vec<OutputMode>> = Mutex::new(Vec::new());
 static HOOK_READY: AtomicBool = AtomicBool::new(false);
 
 pub fn start(app: AppHandle) -> anyhow::Result<()> {
-    let settings = crate::settings::load();
+    let settings = crate::settings::current();
     let cursor = settings.hotkeys.cursor.clone();
     let handoff = settings.hotkeys.handoff.clone();
 

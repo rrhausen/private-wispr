@@ -124,9 +124,7 @@ fn set_mic(app: AppHandle, state: tauri::State<AppState>, name: Option<String>) 
     // wertlos — schließen (Drop), damit z. B. das BT-Headset trennen kann.
     drop(state.mic_warm.lock().unwrap().take());
     *state.mic.lock().unwrap() = name.clone();
-    let mut settings = settings::load();
-    settings.mic_device = name;
-    settings::save(&settings).map_err(|e| e.to_string())?;
+    settings::update(|s| s.mic_device = name).map_err(|e| e.to_string())?;
     info!("Eingabegerät gesetzt: {:?}", state.mic.lock().unwrap());
     emit_status(&app);
     Ok(())
@@ -134,7 +132,7 @@ fn set_mic(app: AppHandle, state: tauri::State<AppState>, name: Option<String>) 
 
 #[tauri::command]
 fn get_settings() -> settings::Settings {
-    settings::load()
+    settings::current()
 }
 
 /// Hand-off-Ablageort setzen. Der Ordner wird sofort angelegt (klarer Fehler
@@ -145,9 +143,7 @@ fn set_handoff_dir(path: Option<String>) -> Result<String, String> {
         std::fs::create_dir_all(p)
             .map_err(|e| format!("Verzeichnis nicht anlegbar: {p} ({e})"))?;
     }
-    let mut settings = settings::load();
-    settings.handoff_dir = path.clone();
-    settings::save(&settings).map_err(|e| e.to_string())?;
+    settings::update(|s| s.handoff_dir = path).map_err(|e| e.to_string())?;
     let effective = handoff::dir().display().to_string();
     info!("Hand-off-Ablageort: {effective}");
     Ok(effective)
@@ -155,9 +151,7 @@ fn set_handoff_dir(path: Option<String>) -> Result<String, String> {
 
 #[tauri::command]
 fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::load();
-    settings.overlay_enabled = enabled;
-    settings::save(&settings).map_err(|e| e.to_string())?;
+    settings::update(|s| s.overlay_enabled = enabled).map_err(|e| e.to_string())?;
     if !enabled {
         if let Some(w) = app.get_webview_window("overlay") {
             let _ = w.hide();
@@ -168,9 +162,7 @@ fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
 
 #[tauri::command]
 fn set_feedback_enabled(enabled: bool) -> Result<(), String> {
-    let mut settings = settings::load();
-    settings.feedback_sound = enabled;
-    settings::save(&settings).map_err(|e| e.to_string())
+    settings::update(|s| s.feedback_sound = enabled).map_err(|e| e.to_string())
 }
 
 /// Farbschema setzen ("dark" | "light" | "system").
@@ -179,18 +171,14 @@ fn set_theme(theme: String) -> Result<(), String> {
     if !settings::THEMES.contains(&theme.as_str()) {
         return Err(format!("Unbekanntes Farbschema: {theme}"));
     }
-    let mut settings = settings::load();
-    settings.theme = theme;
-    settings::save(&settings).map_err(|e| e.to_string())
+    settings::update(|s| s.theme = theme).map_err(|e| e.to_string())
 }
 
 /// Diktat-Audio aufbewahren statt nach der Transkription zu löschen
 /// (specs 4.8). Zum Einsammeln der Eval-Clips aus dem echten Betrieb.
 #[tauri::command]
 fn set_archive_audio(enabled: bool) -> Result<(), String> {
-    let mut settings = settings::load();
-    settings.archive_audio = enabled;
-    settings::save(&settings).map_err(|e| e.to_string())
+    settings::update(|s| s.archive_audio = enabled).map_err(|e| e.to_string())
 }
 
 /// Beide PTT-Hotkeys setzen: validieren + konfliktfrei umregistrieren, erst
@@ -203,10 +191,11 @@ fn set_hotkeys(cursor: String, handoff: String) -> Result<(), String> {
         log::warn!("set_hotkeys abgelehnt: {msg} (cursor={cursor:?}, handoff={handoff:?})");
         return Err(msg);
     }
-    let mut settings = settings::load();
-    settings.hotkeys.cursor = cursor;
-    settings.hotkeys.handoff = handoff;
-    settings::save(&settings).map_err(|e| e.to_string())?;
+    settings::update(|s| {
+        s.hotkeys.cursor = cursor;
+        s.hotkeys.handoff = handoff;
+    })
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -342,7 +331,7 @@ pub fn run() {
                 default_hook(info);
             }));
 
-            let initial = settings::load();
+            let initial = settings::current();
             app.manage(AppState {
                 engine: Arc::new(Mutex::new(None)),
                 engine_info: Arc::new(Mutex::new(stt::EngineInfo::default())),
@@ -684,7 +673,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
             &mut **engine,
             &dict,
             fitting::SeamContext::none(),
-            settings::load().archive_audio,
+            settings::current().archive_audio,
         );
         match outcome {
             dictation::DictationOutcome::TooShort { .. } => {
@@ -756,7 +745,7 @@ fn overlay_emit(app: &AppHandle, payload: OverlayPayload) {
 }
 
 fn overlay_show(app: &AppHandle) {
-    if !settings::load().overlay_enabled {
+    if !settings::current().overlay_enabled {
         return;
     }
     if let Some(w) = app.get_webview_window("overlay") {

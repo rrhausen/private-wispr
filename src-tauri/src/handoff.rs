@@ -14,7 +14,7 @@ use crate::settings;
 /// Aktives Hand-off-Verzeichnis: Einstellung, sonst der eingebaute Default
 /// (M0.3-Nutzervorgabe: das hand-off-Verzeichnis dieses Projekts).
 pub fn dir() -> PathBuf {
-    settings::load()
+    settings::current()
         .handoff_dir
         .map(PathBuf::from)
         .unwrap_or_else(settings::default_handoff_dir)

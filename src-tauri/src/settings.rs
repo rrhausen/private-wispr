@@ -233,16 +233,6 @@ fn write_to(path: &Path, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-// ─── Alt-Brücke (flüchtig, fliegt mit den Aufrufern im nächsten Commit) ──
-
-pub fn load() -> Settings {
-    current()
-}
-
-pub fn save(settings: &Settings) -> Result<()> {
-    update(|s| *s = settings.clone())
-}
-
 #[cfg(test)]
 pub(crate) mod testing {
     //! Test-Zugang zum Prozess-Store: umschalten gegen Settings + Temp-Pfad,
