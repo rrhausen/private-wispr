@@ -444,14 +444,14 @@ terms:
   # --- Personen (Eval namen/notiz/braindump) ---
   - canonical: Reimar Hausenblas
     aliases: [Reimer Hausenblas, Reimerhausenblas, Reimer-Hausenblas]
-  - canonical: Klimmeck
-    aliases: [Klimmet, Klimmek]
+  - canonical: Klimmek
+    aliases: [Klimmeck, Klimmet]
   - canonical: Philipp Buyny
     aliases: [Philipp Beiney, Philipp Beine]
   - canonical: Buyny
     aliases: [Beiney, Beini]
-  - canonical: Marco Einecke
-    aliases: [Marco Eineke]
+  - canonical: Marko Einecke
+    aliases: [Marco Einecke, Marco Eineke, Marko Eineke]
   - canonical: Einecke
     aliases: [Eineke]
   - canonical: Beate
