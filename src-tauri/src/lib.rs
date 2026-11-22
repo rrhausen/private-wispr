@@ -10,6 +10,7 @@
 
 mod dictionary;
 pub mod engine_worker;
+pub mod eval;
 mod feedback;
 mod fitting;
 mod focus;

@@ -1,9 +1,14 @@
-//! Headless-Selbsttest (`--selftest [audio.wav]`): Keine GUI, keine Aufnahme.
+//! Headless-Selbsttest (`--selftest [audio.wav|verzeichnis]`): Keine GUI,
+//! keine Aufnahme.
 //!
 //! Kein Argument: Engine-Init + Modell-Load + Geräte-Report (Build-Smoke-Test).
-//! Mit WAV: vollständige Transkription mit Zeitmessung — Keimzelle des
-//! Eval-Harness (specs Abschnitt 6). Das WAV muss 16 kHz mono sein
-//! (Float oder Int16; wird nach f32 normalisiert).
+//! Mit Datei: vollständige Transkription mit Zeitmessung (Keimzelle des
+//! Eval-Harness, specs Abschnitt 6).
+//! Mit Verzeichnis: **Batch-Modus** — alle Audio-Clips transkribieren, gegen
+//! die gleichnamigen `.txt`-Ground-Truths den normalisierten WER messen
+//! (roh und nach Regel-Pipeline) und die Ersetzungs-Fehler sammeln, aus denen
+//! Wörterbuch-Regeln abgeleitet werden. Audio-Formate: WAV 16 kHz direkt,
+//! alles andere via ffmpeg (siehe `read_audio_16k_mono`).
 
 use std::path::Path;
 
@@ -23,6 +28,12 @@ pub fn run(wav: Option<std::path::PathBuf>) -> i32 {
 }
 
 fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
+    // Verzeichnis → Batch-Modus (eigene Tabelle auf stdout, JSON am Ende).
+    if let Some(path) = wav {
+        if path.is_dir() {
+            return run_batch(path);
+        }
+    }
     let t_start = std::time::Instant::now();
     let mut engine = crate::stt::Engine::load_default()?;
     let load_ms = t_start.elapsed().as_millis();
@@ -76,6 +87,192 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         }
     }
     Ok(out)
+}
+
+/// Audio-Erweiterungen, die der Batch-Modus einsammelt (WAV direkt, der Rest
+/// über ffmpeg-Decode).
+const AUDIO_EXTS: &[&str] = &["wav", "m4a", "mp3", "ogg", "opus", "flac", "aac", "wma"];
+
+/// Batch-Modus: alle Clips eines Verzeichnisses gegen ihre `.txt`-Ground-
+/// Truths messen. Ausgabe: menschenlesbare Tabelle + Ersetzungs-Topliste auf
+/// stdout, danach das komplette Ergebnis als JSON (weiterverarbeitbar).
+fn run_batch(dir: &Path) -> Result<serde_json::Value> {
+    let mut clips: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .with_context(|| format!("Verzeichnis nicht lesbar: {}", dir.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|e| AUDIO_EXTS.iter().any(|x| e.eq_ignore_ascii_case(x)))
+        })
+        .collect();
+    clips.sort();
+    anyhow::ensure!(!clips.is_empty(), "Keine Audio-Dateien in {}", dir.display());
+
+    let t_start = std::time::Instant::now();
+    let mut engine = crate::stt::Engine::load_default()?;
+    let engine_info = engine.info().clone();
+    println!(
+        "Modell: {} · {}{} · Load {} ms",
+        engine_info.model_name,
+        engine_info.backend,
+        if engine_info.on_gpu { " · GPU" } else { "" },
+        t_start.elapsed().as_millis()
+    );
+
+    // Wörterbuch einmal laden; die Pipeline läuft pro Clip wie in der App.
+    let dict = crate::dictionary::Dictionary::load();
+    let vocabulary = dict.vocabulary();
+
+    struct Row {
+        name: String,
+        audio_secs: f64,
+        total_ms: f64,
+        has_gt: bool,
+        wer_raw: Option<f64>,
+        wer_final: Option<f64>,
+        errors: usize,
+    }
+    let mut rows: Vec<Row> = Vec::new();
+    // Aggregate über alle Clips: Ersetzungen (ref → hyp) und fehlende Wörter.
+    let mut all_subs: std::collections::BTreeMap<(String, String), usize> =
+        std::collections::BTreeMap::new();
+    let mut all_dels: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut sum_err = 0usize;
+    let mut sum_len = 0usize;
+    let mut total_audio = 0.0f64;
+    let mut total_ms = 0.0f64;
+    let mut clip_json: Vec<serde_json::Value> = Vec::new();
+
+    for clip in &clips {
+        let name = clip.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        let samples = read_audio_16k_mono(clip)?;
+        let audio_secs = samples.len() as f64 / 16_000.0;
+        let t0 = std::time::Instant::now();
+        let result = engine
+            .transcribe(&samples, vocabulary)
+            .with_context(|| format!("Transkription fehlgeschlagen: {}", clip.display()))?;
+        let mut clip_ms = t0.elapsed().as_millis() as f64;
+        clip_ms = clip_ms.max(1.0);
+        let outcome = dict.apply(&result.text);
+        let fitted = crate::fitting::fit(&outcome.text, &crate::fitting::SeamContext::none());
+
+        let gt = std::fs::read_to_string(clip.with_extension("txt")).ok();
+        let (wer_raw, wer_final, errors) = if let Some(gt) = &gt {
+            let reference = crate::eval::normalize(gt);
+            let raw = crate::eval::wer(&reference, &crate::eval::normalize(&result.text));
+            let (fin, ops) = {
+                let (r, ops) = crate::eval::align(&reference, &crate::eval::normalize(&fitted));
+                (r, ops)
+            };
+            let (subs, dels) = crate::eval::error_pairs(&ops);
+            for (k, v) in subs {
+                *all_subs.entry(k).or_insert(0) += v;
+            }
+            for (k, v) in dels {
+                *all_dels.entry(k).or_insert(0) += v;
+            }
+            sum_err += fin.substitutions + fin.deletions + fin.insertions;
+            sum_len += fin.ref_len;
+            (Some(raw.wer()), Some(fin.wer()), fin.substitutions + fin.deletions)
+        } else {
+            (None, None, 0)
+        };
+        rows.push(Row {
+            name: name.clone(),
+            audio_secs,
+            total_ms: clip_ms,
+            has_gt: gt.is_some(),
+            wer_raw,
+            wer_final,
+            errors,
+        });
+        total_audio += audio_secs;
+        total_ms += clip_ms;
+        clip_json.push(serde_json::json!({
+            "clip": name,
+            "has_ground_truth": gt.is_some(),
+            "audio_secs": audio_secs,
+            "transcription_ms": result.transcription_ms,
+            "total_ms": clip_ms,
+            "wer_raw": wer_raw,
+            "wer_final": wer_final,
+            "raw_text": result.text,
+            "final_text": fitted,
+        }));
+        println!("  ✓ {} ({:.1} s)", name, audio_secs);
+    }
+
+    // Tabelle (Menschenlesbar).
+    println!(
+        "\n{:<26} {:>8} {:>8} {:>9} {:>10} {:>7}",
+        "Clip", "Sek.", "RTF", "WER roh", "WER final", "Fehler"
+    );
+    println!("{}", "-".repeat(76));
+    for r in &rows {
+        let pct = |w: &Option<f64>| w.map(|v| format!("{:>8.1}%", v * 100.0)).unwrap_or_else(|| "        —".into());
+        println!(
+            "{:<26} {:>8.1} {:>8.3} {} {} {:>7}",
+            r.name,
+            r.audio_secs,
+            r.total_ms / 1000.0 / r.audio_secs.max(0.001),
+            pct(&r.wer_raw),
+            pct(&r.wer_final),
+            if r.has_gt { format!("{}", r.errors) } else { "—".into() }
+        );
+    }
+    let overall = if sum_len > 0 { sum_err as f64 / sum_len as f64 } else { 0.0 };
+    println!("{}", "-".repeat(76));
+    println!(
+        "Gesamt: {:.1} s Audio · RTF {:.3} · WER final (wortgewichtet) {:.1}% ({} Fehler auf {} Wörtern)",
+        total_audio,
+        total_ms / 1000.0 / total_audio.max(0.001),
+        overall * 100.0,
+        sum_err,
+        sum_len
+    );
+
+    // Ersetzungen als Topliste — die Rohdaten für Wörterbuch-Regeln.
+    let mut subs_vec: Vec<(&(String, String), &usize)> = all_subs.iter().collect();
+    subs_vec.sort_by(|a, b| b.1.cmp(a.1));
+    println!("\nErsetzungen (Referenz ← erkannt, Top 40):");
+    for ((r, h), n) in subs_vec.iter().take(40) {
+        println!("  {:>3}×  {:?} ← {:?}", n, r, h);
+    };
+    let mut dels_vec: Vec<(&String, &usize)> = all_dels.iter().collect();
+    dels_vec.sort_by(|a, b| b.1.cmp(a.1));
+    println!("\nFehlende Wörter (Referenz, Top 20):");
+    for (r, n) in dels_vec.iter().take(20) {
+        println!("  {:>3}×  {:?}", n, r);
+    }
+
+    let substitutions_json: Vec<serde_json::Value> = subs_vec
+        .iter()
+        .map(|((r, h), n)| serde_json::json!({"ref": r, "hyp": h, "count": n}))
+        .collect();
+    let missing_json: Vec<serde_json::Value> = dels_vec
+        .iter()
+        .map(|(r, n)| serde_json::json!({"word": r, "count": n}))
+        .collect();
+    Ok(serde_json::json!({
+        "ok": true,
+        "batch_dir": dir.display().to_string(),
+        "model": engine_info.model_name,
+        "backend": engine_info.backend,
+        "on_gpu": engine_info.on_gpu,
+        "dictionary_version": dict.version,
+        "clips": clip_json,
+        "summary": {
+            "clips": rows.len(),
+            "audio_secs": total_audio,
+            "total_ms": total_ms,
+            "wer_final_weighted": overall,
+            "errors": sum_err,
+            "ref_words": sum_len,
+        },
+        "substitutions": substitutions_json,
+        "missing": missing_json,
+    }))
 }
 
 /// Audio auf 16-kHz-mono-f32 normalisieren. WAV in 16 kHz mono wird direkt
