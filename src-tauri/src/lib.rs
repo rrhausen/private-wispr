@@ -174,6 +174,16 @@ fn set_theme(theme: String) -> Result<(), String> {
     settings::update(|s| s.theme = theme).map_err(|e| e.to_string())
 }
 
+/// Paste-Chord setzen ("auto" | "ctrl_v" | "ctrl_shift_v" | "shift_insert",
+/// specs 4.6). Wirkt ab dem nächsten Diktat.
+#[tauri::command]
+fn set_paste_chord(chord: String) -> Result<(), String> {
+    if !settings::PASTE_CHORDS.contains(&chord.as_str()) {
+        return Err(format!("Unbekanntes Einfüge-Verhalten: {chord}"));
+    }
+    settings::update(|s| s.paste_chord = chord).map_err(|e| e.to_string())
+}
+
 /// Diktat-Audio aufbewahren statt nach der Transkription zu löschen
 /// (specs 4.8). Zum Einsammeln der Eval-Clips aus dem echten Betrieb.
 #[tauri::command]
@@ -396,6 +406,7 @@ pub fn run() {
             set_overlay_enabled,
             set_feedback_enabled,
             set_theme,
+            set_paste_chord,
             set_archive_audio,
             set_hotkeys,
             hook_status,

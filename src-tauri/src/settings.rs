@@ -84,6 +84,11 @@ pub struct Settings {
     /// das war bis M1 die einzige Welt).
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Paste-Chord (specs 4.6): "auto" (Terminal-Prozess ⇒ Umschalt+
+    /// Einfügen, sonst Strg+V) oder fest "ctrl_v" | "ctrl_shift_v" |
+    /// "shift_insert". Auswahl-Logik in paste::select_chord.
+    #[serde(default = "default_paste_chord")]
+    pub paste_chord: String,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
 }
@@ -96,7 +101,14 @@ fn default_theme() -> String {
     "dark".into()
 }
 
+fn default_paste_chord() -> String {
+    "auto".into()
+}
+
 pub const THEMES: &[&str] = &["dark", "light", "system"];
+
+/// Gültige paste_chord-Werte (Validierung im zugehörigen Setter).
+pub const PASTE_CHORDS: &[&str] = &["auto", "ctrl_v", "ctrl_shift_v", "shift_insert"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -108,6 +120,7 @@ impl Default for Settings {
             history_retention_days: default_history_retention_days(),
             archive_audio: false,
             theme: default_theme(),
+            paste_chord: default_paste_chord(),
             hotkeys: HotkeySettings::default(),
         }
     }
@@ -294,6 +307,7 @@ mod tests {
         assert!(s.overlay_enabled);
         assert_eq!(s.history_retention_days, 90);
         assert_eq!(s.theme, "dark");
+        assert_eq!(s.paste_chord, "auto");
         assert!(!s.archive_audio);
     }
 

@@ -28,12 +28,15 @@ use crate::focus;
 use crate::handoff;
 use crate::paste;
 use crate::recording::OutputMode;
+use crate::settings;
 
 /// Rein berechnete Entscheidung, wohin ein Diktat-Text geht.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeliveryPlan {
     /// Am Cursor der Ziel-App einfügen: Fokus unverändert oder nicht prüfbar.
-    InsertAtCursor,
+    /// `target_app`: Ziel-App der Aufnahme — steuert die Terminal-Erkennung
+    /// des Paste-Chords (paste::select_chord) und die Historie.
+    InsertAtCursor { target_app: Option<String> },
     /// Nur in die Zwischenablage: Fensterwechsel seit Aufnahmebeginn
     /// nachgewiesen (specs 4.6) — Strg+V ginge ins falsche Feld.
     /// `target_app`: Ziel-App der Aufnahme (Log-/Historien-Kontext).
@@ -72,7 +75,9 @@ pub fn plan(mode: OutputMode, focus: Option<&focus::Snapshot>, foreground: isize
                     target_app: focus.and_then(|s| s.process.clone()),
                 }
             } else {
-                DeliveryPlan::InsertAtCursor
+                DeliveryPlan::InsertAtCursor {
+                    target_app: focus.and_then(|s| s.process.clone()),
+                }
             }
         }
     }
@@ -82,7 +87,9 @@ pub fn plan(mode: OutputMode, focus: Option<&focus::Snapshot>, foreground: isize
 /// Bericht darüber liefern. Dünne Verdrahtung, bewusst ungetestet.
 pub fn execute(plan: &DeliveryPlan, text: &str) -> DeliveryReport {
     match plan {
-        DeliveryPlan::InsertAtCursor => insert_at_cursor(text),
+        DeliveryPlan::InsertAtCursor { target_app } => {
+            insert_at_cursor(target_app.as_deref(), text)
+        }
         DeliveryPlan::ClipboardAfterFocusChange { target_app } => {
             clipboard_after_focus_change(target_app.as_deref(), text)
         }
@@ -90,13 +97,14 @@ pub fn execute(plan: &DeliveryPlan, text: &str) -> DeliveryReport {
     }
 }
 
-fn insert_at_cursor(text: &str) -> DeliveryReport {
-    // Kopieren und Strg+V getrennt (paste.rs): Schlägt nur das Einfügen,
+fn insert_at_cursor(target_app: Option<&str>, text: &str) -> DeliveryReport {
+    // Kopieren und Paste-Chord getrennt (paste.rs): Schlägt nur das Einfügen,
     // liegt der Text wenigstens in der Zwischenablage — die Meldung sagt es.
+    let chord = paste::select_chord(&settings::current().paste_chord, target_app);
     if let Err(e) = paste::copy_to_clipboard(text) {
         return clipboard_unavailable("cursor", e);
     }
-    match paste::send_ctrl_v() {
+    match paste::send_paste_chord(chord) {
         Ok(()) => DeliveryReport {
             target: "Cursor".into(),
             done_msg: None,
@@ -172,12 +180,13 @@ mod tests {
     }
 
     /// Pflicht-Test (a): Cursor-Diktat fügt ein, solange das bei
-    /// Aufnahmebeginn gemerkte Fenster noch vorne steht.
+    /// Aufnahmebeginn gemerkte Fenster noch vorne steht. Die Ziel-App
+    /// reist mit (Terminal-Erkennung des Paste-Chords, Historie).
     #[test]
     fn cursor_fuegt_ein_wenn_fenster_vorne_steht() {
         assert_eq!(
             plan(OutputMode::Cursor, Some(&snap(42)), 42),
-            DeliveryPlan::InsertAtCursor
+            DeliveryPlan::InsertAtCursor { target_app: Some("Code.exe".into()) }
         );
     }
 
@@ -199,10 +208,17 @@ mod tests {
     /// Pflicht-Test (c): Nicht prüfbar ⇒ vertrauen. Kein Snapshot (Check
     /// nicht gelaufen) ODER Snapshot ohne Fenster — `hwnd == 0` löste
     /// früher fälschlich „Fokus gewechselt" aus (lib.rs, Cursor-Arm).
+    /// Ohne Snapshot gibt es auch keine Ziel-App (Chord läuft auf „auto").
     #[test]
     fn cursor_vertraut_wenn_nicht_pruefbar() {
-        assert_eq!(plan(OutputMode::Cursor, None, 77), DeliveryPlan::InsertAtCursor);
-        assert_eq!(plan(OutputMode::Cursor, Some(&snap(0)), 77), DeliveryPlan::InsertAtCursor);
+        assert_eq!(
+            plan(OutputMode::Cursor, None, 77),
+            DeliveryPlan::InsertAtCursor { target_app: None }
+        );
+        assert_eq!(
+            plan(OutputMode::Cursor, Some(&snap(0)), 77),
+            DeliveryPlan::InsertAtCursor { target_app: Some("Code.exe".into()) }
+        );
     }
 
     /// Pflicht-Test (d): Hand-off plant IMMER die Datei — egal, was der

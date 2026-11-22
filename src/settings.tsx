@@ -144,6 +144,7 @@ export default function SettingsPanel({
   const [overlay, setOverlay] = useState(true);
   const [feedback, setFeedback] = useState(true);
   const [archiveAudio, setArchiveAudio] = useState(false);
+  const [pasteChord, setPasteChord] = useState("auto");
   const [autostart, setAutostart] = useState(false);
   const [customHandoffDir, setCustomHandoffDir] = useState<string | null>(null);
   const [handoffError, setHandoffError] = useState<string | null>(null);
@@ -218,14 +219,19 @@ export default function SettingsPanel({
   }, []);
 
   useEffect(() => {
-    invoke<{ overlay_enabled: boolean; feedback_sound: boolean; handoff_dir: string | null; archive_audio: boolean }>(
-      "get_settings",
-    )
+    invoke<{
+      overlay_enabled: boolean;
+      feedback_sound: boolean;
+      handoff_dir: string | null;
+      archive_audio: boolean;
+      paste_chord: string;
+    }>("get_settings")
       .then((s) => {
         setOverlay(s.overlay_enabled);
         setFeedback(s.feedback_sound);
         setArchiveAudio(s.archive_audio);
         setCustomHandoffDir(s.handoff_dir);
+        setPasteChord(s.paste_chord);
       })
       .catch(console.error);
     isEnabled()
@@ -471,6 +477,11 @@ export default function SettingsPanel({
     invoke("set_archive_audio", { enabled }).catch(console.error);
   }
 
+  function choosePasteChord(chord: string) {
+    setPasteChord(chord);
+    invoke("set_paste_chord", { chord }).catch(console.error);
+  }
+
   async function toggleAutostart(enabled: boolean) {
     try {
       if (enabled) {
@@ -669,6 +680,29 @@ export default function SettingsPanel({
           Ist dein Headset nicht dabei, Windows-Soundeinstellungen prüfen (Bluetooth-Headsets
           müssen verbunden und als Eingabegerät aktiv sein).
         </span>
+      </Section>
+
+      <Section head="Einfügen">
+        <div className="row-line">
+          <div className="row-text">
+            <span className="row-title">Tastenkombination fürs Einfügen</span>
+            <span className="row-sub">
+              „Automatisch" erkennt Terminals (Windows Terminal, Alacritty, PuTTY …) und fügt dort
+              mit Umschalt+Einfügen ein, weil Strg+V dort teils anders belegt ist; sonst Strg+V.
+              Wirkt ab dem nächsten Diktat.
+            </span>
+          </div>
+        </div>
+        <select
+          className="select"
+          value={pasteChord}
+          onChange={(e) => choosePasteChord(e.target.value)}
+        >
+          <option value="auto">Automatisch (Terminal: Umschalt+Einfügen)</option>
+          <option value="ctrl_v">Strg+V</option>
+          <option value="ctrl_shift_v">Strg+Umschalt+V</option>
+          <option value="shift_insert">Umschalt+Einfügen</option>
+        </select>
       </Section>
 
       <Section head="Wörterbuch — Fachbegriffe richtig schreiben">
