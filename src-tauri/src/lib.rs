@@ -29,6 +29,7 @@ mod setup;
 mod settings;
 pub mod stt;
 mod upgrade;
+pub mod vad;
 
 pub use recording::OutputMode;
 use stt::SttEngine;
@@ -114,6 +115,20 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
             "model_path": stt::default_model_path().display().to_string(),
             "model_present": stt::default_model_path().exists(),
             "model_downloading": model_download::is_running(),
+            "vad": vad_status_json(),
+        },
+    })
+}
+
+/// VAD-Zustand als JSON für Status-Command und -Event (Lock-Ordnung: erst
+/// Engine-, dann VAD-Lock — wie überall).
+fn vad_status_json() -> serde_json::Value {
+    let slot = vad::lock_app();
+    serde_json::json!({
+        "state": slot.state.key(),
+        "reason": match &slot.state {
+            vad::VadState::Failed(reason) => Some(reason.clone()),
+            _ => None,
         },
     })
 }
@@ -552,6 +567,7 @@ pub(crate) fn load_engine(app: &AppHandle) {
 fn emit_status(app: &AppHandle) {
     let state = app.state::<AppState>();
     let info = state.engine_info.lock().unwrap();
+    let vad = vad_status_json();
     let _ = app.emit(
         "pw://status",
         serde_json::json!({
@@ -561,6 +577,7 @@ fn emit_status(app: &AppHandle) {
             "on_gpu": info.on_gpu,
             "device": info.device,
             "error": info.error,
+            "vad": vad,
         }),
     );
 }
@@ -784,18 +801,38 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         // Politik (specs 4.8) steckt im tiefen Modul — derselbe Code, den
         // auch der Selftest misst. Der Naht-Kontext bringt die echten
         // Cursor-Zeichen der Ziel-App in die Naht-Regeln (fitting.rs).
-        let outcome = dictation::process(
-            &spooled,
-            mode,
-            &mut **engine,
-            &dict,
-            seam,
-            settings::current().archive_audio,
-        );
+        // VAD (ADR 0004): lazy beim ersten Diktat initialisiert, danach
+        // gemerkt; Lock-Ordnung Engine → VAD wie überall.
+        let (outcome, vad_changed) = {
+            let mut vad_slot = vad::lock_app();
+            let vad_changed = vad_slot.ensure_loaded();
+            let analyzer =
+                vad_slot.analyzer.as_mut().map(|a| a as &mut dyn vad::SpeechAnalyzer);
+            let outcome = dictation::process(
+                &spooled,
+                mode,
+                &mut **engine,
+                &dict,
+                seam,
+                analyzer,
+                settings::current().archive_audio,
+            );
+            (outcome, vad_changed)
+        };
+        if vad_changed {
+            emit_status(&handle);
+        }
         match outcome {
             dictation::DictationOutcome::TooShort { .. } => {
                 overlay_emit(&handle, OverlayPayload { phase: "done", message: Some("Zu kurz".into()), level: None });
                 overlay_hide_later(&handle, Duration::from_millis(700));
+            }
+            dictation::DictationOutcome::NoSpeech => {
+                overlay_emit(
+                    &handle,
+                    OverlayPayload { phase: "done", message: Some("Keine Sprache erkannt".into()), level: None },
+                );
+                overlay_hide_later(&handle, Duration::from_millis(900));
             }
             dictation::DictationOutcome::Failed(msg) => {
                 error!("Transkription fehlgeschlagen: {msg}");

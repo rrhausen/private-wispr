@@ -9,6 +9,12 @@
 //! (roh und nach Regel-Pipeline) und die Ersetzungs-Fehler sammeln, aus denen
 //! Wörterbuch-Regeln abgeleitet werden. Audio-Formate: WAV 16 kHz direkt,
 //! alles andere via ffmpeg (siehe `read_audio_16k_mono`).
+//!
+//! Die ASR läuft über den Engine-Worker-Prozess wie in der App (ADR 0004):
+//! Ein im SELBEN Prozess geladenes Silero-VAD-Modell veränderte messbar die
+//! Transkription der Engine (WER 1,9 % → 5,1 %, 22.11.2026) — der Selftest
+//! misst daher exakt die Prozess-Aufteilung, die die App nutzt: Worker-ASR
+//! plus VAD im eigenen Prozess.
 
 use std::path::Path;
 
@@ -35,9 +41,15 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         }
     }
     let t_start = std::time::Instant::now();
-    let mut engine = crate::stt::Engine::load_default()?;
+    // ASR im Worker-Prozess wie in der App (ADR 0004) — NICHT in-process:
+    // ein zusätzlich im selben Prozess geladenes VAD-Modell veränderte die
+    // Transkription messbar (WER 1,9 % → 5,1 %).
+    let mut engine = crate::engine_worker::WorkerEngine::start_default()?;
     let load_ms = t_start.elapsed().as_millis();
-    let info = engine.info().clone();
+    let info = crate::stt::SttEngine::info(&engine).clone();
+    // VAD wie die App (ADR 0004) — fehlt das Modell, läuft die Messung
+    // ungetrimmt und sagt das ehrlich (kein stiller Unterschied zur App).
+    let mut vad = load_vad();
 
     let base = serde_json::json!({
         "ok": true,
@@ -45,6 +57,7 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         "backend": info.backend,
         "on_gpu": info.on_gpu,
         "load_ms": load_ms,
+        "vad": vad.is_some(),
     });
 
     let Some(path) = wav else { return Ok(base) };
@@ -66,6 +79,7 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
         &mut engine,
         &dict,
         crate::fitting::SeamContext::none(),
+        vad.as_mut().map(|a| a as &mut dyn crate::vad::SpeechAnalyzer),
         false,
     );
     let crate::dictation::DictationOutcome::Transcribed {
@@ -112,6 +126,22 @@ fn run_inner(wav: Option<&Path>) -> Result<serde_json::Value> {
 /// über ffmpeg-Decode).
 const AUDIO_EXTS: &[&str] = &["wav", "m4a", "mp3", "ogg", "opus", "flac", "aac", "wma"];
 
+/// VAD-Analyzer für den Selftest: dieselbe Silero-Instanz, die die App nutzt
+/// (ADR 0004). Fehlt das Modell, wird das GEMELDET (Stdout + `vad: false` im
+/// JSON) und ungetrimmt gemessen — die Messung bleibt ehrlich zur Pipeline.
+fn load_vad() -> Option<crate::vad::SileroVad> {
+    match crate::vad::SileroVad::load_default() {
+        Ok(v) => {
+            println!("VAD: aktiv ({})", crate::vad::VAD_MODEL_FILE);
+            Some(v)
+        }
+        Err(e) => {
+            println!("VAD: nicht verfügbar ({e:#}) — Messung läuft ungetrimmt");
+            None
+        }
+    }
+}
+
 /// Batch-Modus: alle Clips eines Verzeichnisses gegen ihre `.txt`-Ground-
 /// Truths messen. Ausgabe: menschenlesbare Tabelle + Ersetzungs-Topliste auf
 /// stdout, danach das komplette Ergebnis als JSON (weiterverarbeitbar).
@@ -129,8 +159,9 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
     anyhow::ensure!(!clips.is_empty(), "Keine Audio-Dateien in {}", dir.display());
 
     let t_start = std::time::Instant::now();
-    let mut engine = crate::stt::Engine::load_default()?;
-    let engine_info = engine.info().clone();
+    // ASR im Worker-Prozess wie in der App (ADR 0004), s. Modul-Doku.
+    let mut engine = crate::engine_worker::WorkerEngine::start_default()?;
+    let engine_info = crate::stt::SttEngine::info(&engine).clone();
     println!(
         "Modell: {} · {}{} · Load {} ms",
         engine_info.model_name,
@@ -138,6 +169,8 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
         if engine_info.on_gpu { " · GPU" } else { "" },
         t_start.elapsed().as_millis()
     );
+    // VAD wie die App (ADR 0004); der Zustand landet im JSON-Summary.
+    let mut vad = load_vad();
 
     // Wörterbuch einmal laden; die Diktat-Verarbeitung pro Clip ist dieselbe
     // Funktion wie in der App (dictation::process) — keine hand-gewebte Kopie.
@@ -178,6 +211,7 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
             &mut engine,
             &dict,
             crate::fitting::SeamContext::none(),
+            vad.as_mut().map(|a| a as &mut dyn crate::vad::SpeechAnalyzer),
             false,
         );
         let crate::dictation::DictationOutcome::Transcribed {
@@ -297,6 +331,7 @@ fn run_batch(dir: &Path) -> Result<serde_json::Value> {
         "backend": engine_info.backend,
         "on_gpu": engine_info.on_gpu,
         "dictionary_version": dict.version,
+        "vad": vad.is_some(),
         "clips": clip_json,
         "summary": {
             "clips": rows.len(),

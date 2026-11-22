@@ -22,6 +22,8 @@ interface StatusInfo {
     model_path: string;
     model_present: boolean;
     model_downloading: boolean;
+    /** Sprach-Erkennung (VAD): erst nach dem ersten Diktat bewertet. */
+    vad?: { state: "not_tried" | "active" | "failed"; reason: string | null };
   };
 }
 
@@ -318,6 +320,17 @@ export default function App() {
                     <code className="inline">scripts/download-model.ps1</code> ausführen.
                     <br />
                     Pfad: <code className="inline">{engine.model_path}</code>
+                  </div>
+                </div>
+              )}
+              {engine?.vad?.state === "failed" && (
+                <div className="notice">
+                  <span className="notice-icon">⚠</span>
+                  <div>
+                    <strong>Stille-Erkennung (VAD) inaktiv.</strong> Diktate laufen ohne
+                    Trimmen — Grund: {engine.vad.reason ?? "unbekannt"} (Details im Log).{" "}
+                    Abhilfe: <code className="inline">scripts/download-vad-model.ps1</code>{" "}
+                    ausführen und die App neu starten.
                   </div>
                 </div>
               )}

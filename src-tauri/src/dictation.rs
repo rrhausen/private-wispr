@@ -14,7 +14,16 @@
 //! * Transkribiert → archivieren (wenn aktiviert) oder löschen
 //! * Zu kurz       → löschen (kein Archiv-Wert in <0,3-s-Blips; früher leakte
 //!                   dieser Pfad das Spool-WAV still nach %TEMP%)
+//! * Keine Sprache → löschen (VAD-Gate, specs 4.2)
 //! * Engine-Fehler → WAV bleibt für die Fehlersuche liegen, laut geloggt
+//!
+//! VAD (specs 4.2, ADR 0004): Liegt ein Speech-Analyzer vor, läuft er VOR der
+//! Engine über die Aufnahme — als Qualitätstor, nicht als Trim: Aufnahmen
+//! ohne Sprache werden gar nicht transkribiert (Halluzinations-Filter), das
+//! Zu-kurz-Gate misst Sprechzeit statt Gesamtzeit, und die VOLLE Aufnahme
+//! geht zur Engine (Sample-Kürzung verschob Parakeets Decode messbar
+//! schlechter, ADR 0004). Fehlt der Analyzer oder scheitert er: weiter ohne
+//! Gates, laut geloggt (kein stiller Fallback, aber nie blockierend).
 
 use std::path::{Path, PathBuf};
 
@@ -22,14 +31,18 @@ use crate::dictionary::{AppliedRule, Dictionary};
 use crate::fitting::SeamContext;
 use crate::recording::{OutputMode, SpooledRecording};
 use crate::stt::SttEngine;
+use crate::vad::{GateDecision, SpeechAnalyzer};
 
 /// Aufnahmen unter dieser Schwelle gelten als versehentlich (Blitztext-Gate).
+/// Billiges Vor-Gate auf die GESAMT-Dauer (greift auch ohne VAD); liegt der
+/// VAD vor, verfeinert er es zur Sprechzeit (vad::MIN_SPEECH_SECS).
 pub const MIN_RECORDING_SECS: f64 = 0.3;
 
-/// Ergebnis der Diktat-Verarbeitung. „Zu kurz" ist kein Fehler, sondern ein
-/// normaler Fall mit eigener Anzeige; bei „Fehlgeschlagen" bleibt das Audio
-/// für die Fehlersuche liegen (Pfad steht im Log).
-#[derive(Clone, Debug)]
+/// Ergebnis der Diktat-Verarbeitung. „Zu kurz" und „Keine Sprache" sind
+/// keine Fehler, sondern normale Fälle mit eigener Anzeige; bei
+/// „Fehlgeschlagen" bleibt das Audio für die Fehlersuche liegen (Pfad steht
+/// im Log).
+#[derive(Clone, Debug, PartialEq)]
 pub enum DictationOutcome {
     Transcribed {
         /// Rohtranskript vor den Regeln (Nachvollziehbarkeit, specs 4.8).
@@ -42,14 +55,20 @@ pub enum DictationOutcome {
         dictionary_version: String,
         /// Erkannte Sprache (Engine-Angabe; Selftest berichtet sie).
         language: Option<String>,
+        /// Dauer des transkribierten (ggf. getrimmten) Audio.
         audio_secs: f64,
         transcription_ms: u128,
         /// Gesamtzeit der Pipeline inkl. Regeln/Fitting (Eval-Kennzahl).
         pipeline_ms: u128,
     },
     TooShort {
+        /// Maßgebliche Dauer: gesprochene Zeit, wenn der VAD vorliegt,
+        /// sonst die Gesamt-Dauer.
         duration_secs: f64,
     },
+    /// VAD fand kein Sprachsegment — Transkription wurde bewusst nicht
+    /// angestoßen (Halluzinations-Filter, specs 4.2).
+    NoSpeech,
     Failed(String),
 }
 
@@ -61,11 +80,44 @@ pub fn process(
     engine: &mut dyn SttEngine,
     dict: &Dictionary,
     seam: SeamContext,
+    vad: Option<&mut dyn SpeechAnalyzer>,
     archive_audio: bool,
 ) -> DictationOutcome {
     if spool.duration_secs < MIN_RECORDING_SECS {
         dispose_wav(&spool.wav_path, mode, false);
         return DictationOutcome::TooShort { duration_secs: spool.duration_secs };
+    }
+
+    // VAD-Qualitätstor (ADR 0004): entscheidet OB transkribiert wird — die
+    // volle Aufnahme geht zur Engine, geschnitten wird nichts. Ohne Analyzer
+    // oder bei dessen Fehler laufen die Gates offen durch (sichtbar im Log).
+    if let Some(vad) = vad {
+        match vad.segments(&spool.samples) {
+            Ok(segments) => match crate::vad::plan_gate(&segments) {
+                GateDecision::NoSpeech => {
+                    log::info!(
+                        "VAD: keine Sprache in {:.2} s Aufnahme — Transkription übersprungen",
+                        spool.duration_secs
+                    );
+                    dispose_wav(&spool.wav_path, mode, false);
+                    return DictationOutcome::NoSpeech;
+                }
+                GateDecision::TooShort { speech_secs } => {
+                    log::info!("VAD: {speech_secs:.2} s Sprache unter der Schwelle — zu kurz");
+                    dispose_wav(&spool.wav_path, mode, false);
+                    return DictationOutcome::TooShort { duration_secs: speech_secs };
+                }
+                GateDecision::Speech { speech_secs } => {
+                    log::info!(
+                        "VAD: {speech_secs:.2} s Sprache in {:.2} s Aufnahme — volle Aufnahme zur Engine",
+                        spool.duration_secs
+                    );
+                }
+            },
+            Err(e) => {
+                log::warn!("VAD übersprungen ({e:#}) — transkribiere ohne Gates");
+            }
+        }
     }
 
     let vocabulary = dict.vocabulary();
@@ -168,18 +220,24 @@ mod tests {
 
     /// Deterministische Engine für Pipeline-Tests (dritter Adapter neben
     /// In-Process-Engine und Worker — „die Schnittstelle ist die Test-Fläche").
+    /// Merkt sich die Sample-Anzahl des letzten Aufrufs — so testen die
+    /// VAD-Tests, dass der Trim VOR der Engine wirkt.
     struct FakeEngine {
         text: &'static str,
         fail: bool,
         info: crate::stt::EngineInfo,
+        last_len: std::cell::Cell<usize>,
     }
 
     impl FakeEngine {
         fn ok(text: &'static str) -> Self {
-            Self { text, fail: false, info: fake_info() }
+            Self { text, fail: false, info: fake_info(), last_len: std::cell::Cell::new(0) }
         }
         fn failing() -> Self {
-            Self { text: "", fail: true, info: fake_info() }
+            Self { text: "", fail: true, info: fake_info(), last_len: std::cell::Cell::new(0) }
+        }
+        fn seen_samples(&self) -> usize {
+            self.last_len.get()
         }
     }
 
@@ -197,6 +255,7 @@ mod tests {
             samples: &[f32],
             _vocabulary: &[String],
         ) -> anyhow::Result<crate::stt::TranscriptResult> {
+            self.last_len.set(samples.len());
             if self.fail {
                 anyhow::bail!("Engine-Fehler (Test)");
             }
@@ -251,6 +310,25 @@ mod tests {
         }
     }
 
+    /// Deterministischer VAD-Adapter für Pipeline-Tests (dieselbe Fläche wie
+    /// FakeEngine — die SpeechAnalyzer-Schnittstelle).
+    struct FakeAnalyzer {
+        segments: Vec<crate::vad::Segment>,
+        fail: bool,
+    }
+
+    impl crate::vad::SpeechAnalyzer for FakeAnalyzer {
+        fn segments(
+            &mut self,
+            _samples: &[f32],
+        ) -> anyhow::Result<Vec<crate::vad::Segment>> {
+            if self.fail {
+                anyhow::bail!("VAD-Fehler (Test)");
+            }
+            Ok(self.segments.clone())
+        }
+    }
+
     /// Pflicht-Test (a): Pipeline-Ordnung — roh bleibt roh, Filler raus,
     /// Wörterbuch-Regel greift, Fitting läuft, Zeiten werden gemessen.
     #[test]
@@ -258,7 +336,7 @@ mod tests {
         let s = spool(16_000, 1.0);
         let mut engine = FakeEngine::ok("äh hallo Scherpoint welt");
         let dict = dict_mit_regel();
-        let out = process(&s, OutputMode::Cursor, &mut engine, &dict, SeamContext::none(), false);
+        let out = process(&s, OutputMode::Cursor, &mut engine, &dict, SeamContext::none(), None, false);
         let DictationOutcome::Transcribed {
             raw, final_text, applied, audio_secs, pipeline_ms, ..
         } = out else {
@@ -282,7 +360,7 @@ mod tests {
     fn zu_kurz_entsorgt_trotzdem() {
         let s = spool(1600, 0.1);
         let mut engine = FakeEngine::ok("egal");
-        let out = process(&s, OutputMode::Handoff, &mut engine, &dict_mit_regel(), SeamContext::none(), true);
+        let out = process(&s, OutputMode::Handoff, &mut engine, &dict_mit_regel(), SeamContext::none(), None, true);
         assert!(matches!(out, DictationOutcome::TooShort { duration_secs } if (duration_secs - 0.1).abs() < 1e-9));
         assert!(!s.wav_path.exists(), "Zu-kurz-WAV muss entsorgt werden — kein Leak");
     }
@@ -293,7 +371,7 @@ mod tests {
     fn engine_fehler_wav_bleibt_fuer_fehlersuche() {
         let s = spool(16_000, 1.0);
         let mut engine = FakeEngine::failing();
-        let out = process(&s, OutputMode::Cursor, &mut engine, &dict_mit_regel(), SeamContext::none(), true);
+        let out = process(&s, OutputMode::Cursor, &mut engine, &dict_mit_regel(), SeamContext::none(), None, true);
         let DictationOutcome::Failed(msg) = out else {
             panic!("Expected Failed, got {out:?}");
         };
@@ -302,13 +380,110 @@ mod tests {
         std::fs::remove_file(&s.wav_path).ok();
     }
 
+    /// VAD-Pflichttest (d): Kein Sprachsegment → NoSpeech, Transkription
+    /// wurde nie angestoßen, WAV entsorgt (Halluzinations-Filter, specs 4.2).
+    #[test]
+    fn keine_sprache_liefert_nospeech_und_entsorgt() {
+        let s = spool(16_000, 1.0);
+        let mut engine = FakeEngine::ok("hätte halluziniert");
+        let mut vad = FakeAnalyzer { segments: vec![], fail: false };
+        let out = process(
+            &s,
+            OutputMode::Cursor,
+            &mut engine,
+            &dict_mit_regel(),
+            SeamContext::none(),
+            Some(&mut vad),
+            true,
+        );
+        assert_eq!(out, DictationOutcome::NoSpeech);
+        assert_eq!(engine.seen_samples(), 0, "Engine darf nicht aufgerufen worden sein");
+        assert!(!s.wav_path.exists(), "Kein-Sprache-WAV muss entsorgt werden");
+    }
+
+    /// VAD-Pflichttest (e): Sprache unter der Sprechzeit-Schwelle → TooShort
+    /// mit der Sprechzeit (nicht der Gesamtdauer) als Maß.
+    #[test]
+    fn sprache_unter_sprechzeitschwelle_mit_sprechzeit() {
+        // 2 s Aufnahme, aber nur 0,1 s Sprache darin.
+        let s = spool(32_000, 2.0);
+        let mut engine = FakeEngine::ok("egal");
+        let mut vad = FakeAnalyzer {
+            segments: vec![crate::vad::Segment { start_sample: 16_000, end_sample: 17_600 }],
+            fail: false,
+        };
+        let out = process(
+            &s,
+            OutputMode::Cursor,
+            &mut engine,
+            &dict_mit_regel(),
+            SeamContext::none(),
+            Some(&mut vad),
+            false,
+        );
+        assert!(matches!(out, DictationOutcome::TooShort { duration_secs } if (duration_secs - 0.1).abs() < 1e-9));
+        assert!(!s.wav_path.exists());
+    }
+
+    /// VAD-Pflichttest (f): Genug Sprache ⇒ die VOLLE Aufnahme erreicht die
+    /// Engine — der VAD ist Qualitätstor, kein Trim (ADR 0004: Kürzung
+    /// verschob den Decode messbar schlechter).
+    #[test]
+    fn volle_aufnahme_zur_engine_trotz_segmenten() {
+        // 4 s Aufnahme, Sprache nur in der Mitte — Engine sieht alle 4 s.
+        let s = spool(64_000, 4.0);
+        let mut engine = FakeEngine::ok("voll");
+        let mut vad = FakeAnalyzer {
+            segments: vec![
+                crate::vad::Segment { start_sample: 8_000, end_sample: 24_000 },
+                crate::vad::Segment { start_sample: 40_000, end_sample: 56_000 },
+            ],
+            fail: false,
+        };
+        let out = process(
+            &s,
+            OutputMode::Cursor,
+            &mut engine,
+            &dict_mit_regel(),
+            SeamContext::none(),
+            Some(&mut vad),
+            false,
+        );
+        let DictationOutcome::Transcribed { audio_secs, .. } = out else {
+            panic!("Expected Transcribed, got {out:?}");
+        };
+        assert_eq!(engine.seen_samples(), 64_000, "Kein Trim — volle Länge zur Engine");
+        assert!((audio_secs - 4.0).abs() < 1e-9);
+        assert!(!s.wav_path.exists());
+    }
+
+    /// VAD-Pflichttest (g): Analyzer-Fehler ⇒ sichtbar übersprungen — die
+    /// volle Aufnahme erreicht die Engine ohne Gates (kein stiller Abbruch).
+    #[test]
+    fn vad_fehler_transkribiert_ohne_gates() {
+        let s = spool(16_000, 1.0);
+        let mut engine = FakeEngine::ok("ohne gates");
+        let mut vad = FakeAnalyzer { segments: vec![], fail: true };
+        let out = process(
+            &s,
+            OutputMode::Cursor,
+            &mut engine,
+            &dict_mit_regel(),
+            SeamContext::none(),
+            Some(&mut vad),
+            false,
+        );
+        assert!(matches!(out, DictationOutcome::Transcribed { .. }));
+        assert_eq!(engine.seen_samples(), 16_000, "Volle Länge trotz Analyzer-Fehler");
+    }
+
     /// Archiv-Politik: Mit aktiviertem Archiv landet das WAV unter dem
     /// Tagesordner, benannt nach Uhrzeit + Modus (Eval-Clips aus dem Betrieb).
     #[test]
     fn archivierung_benennt_zeit_und_modus() {
         let s = spool(16_000, 1.0);
         let mut engine = FakeEngine::ok("test");
-        let out = process(&s, OutputMode::Handoff, &mut engine, &dict_mit_regel(), SeamContext::none(), true);
+        let out = process(&s, OutputMode::Handoff, &mut engine, &dict_mit_regel(), SeamContext::none(), None, true);
         assert!(matches!(out, DictationOutcome::Transcribed { .. }));
         assert!(!s.wav_path.exists(), "Quell-WAV ist weg (verschoben)");
         // Die archivierte Datei heißt "... handoff.wav" und wird wieder entfernt.

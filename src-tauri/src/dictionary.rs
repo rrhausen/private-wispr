@@ -63,7 +63,7 @@ pub struct Term {
 }
 
 /// Eine angewandte Regel fürs Historie-Protokoll (`applied_rules`-JSON).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct AppliedRule {
     pub canonical: String,
     /// Erkannte Phrase im Original (z. B. „Scherpoint").

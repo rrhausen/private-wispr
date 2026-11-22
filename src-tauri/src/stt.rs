@@ -4,10 +4,27 @@
 //! und die Worker-Prozess-Isolation folgen in M1 — siehe specs 4.1).
 
 use std::path::PathBuf;
+use std::sync::Once;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use transcribe_cpp::{Backend, Model, ModelOptions, RunOptions, Session, Task};
+
+/// transcribe.cpp-Backends PRO Prozess genau einmal initialisieren (Logging
+/// + Backends). Engine und VAD-Modell rufen beide hier auf; ein zweiter
+/// `init_backends_default()`-Aufruf im selben Prozess veränderte messbar
+/// die Transkription (WER 1,9 % → 5,1 %, 22.11.2026) — daher Once.
+pub fn ensure_backends_once() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        transcribe_cpp::init_logging();
+        if let Err(e) = transcribe_cpp::init_backends_default() {
+            // Laut melden, aber nicht abbrechen: Das Modell-Load gleich danach
+            // liefert den präzisen Fehler (z. B. DLL fehlt).
+            log::error!("Backends-Init fehlgeschlagen: {e}");
+        }
+    });
+}
 
 /// M0-Default-Modell (specs 5.1): Parakeet TDT 0.6B v3, Q8_0.
 /// SHA256/Größe sind Vorrat für den In-App-Download-Manager (M1) und den
@@ -113,9 +130,7 @@ impl Engine {
     }
 
     pub fn load(path: &std::path::Path) -> Result<Engine> {
-        transcribe_cpp::init_logging();
-        transcribe_cpp::init_backends_default()
-            .map_err(|e| anyhow::anyhow!("Backends-Init fehlgeschlagen: {e}"))?;
+        crate::stt::ensure_backends_once();
 
         let model = Model::load_with(
             path,
