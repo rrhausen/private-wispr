@@ -5,10 +5,11 @@
 //! Ablauf einer Transaktion:
 //!
 //! 1. **Vollformat-Snapshot** der aktuellen Zwischenablage (alle Formate,
-//!    Bytes kopiert — inkl. Bitmaps über die DIB-Familie). Riesenformate
-//!    (Kappen s. u.) verzichten auf die Transaktion: Dann läuft der plain
-//!    Kopier-Pfad wie vor der Transaktion (deliver.rs), nur der Restore
-//!    entfällt.
+//!    Bytes kopiert — inkl. Bitmaps über die DIB-Familie; nur HGLOBAL-
+//!    backed Formate sind sperrbar, GDI-Handle-Formate werden übersprun-
+//!    gen, siehe `hglobal_backed`). Riesenformate (Kappen s. u.) verzichten
+//!    auf die Transaktion: Dann läuft der plain Kopier-Pfad wie vor der
+//!    Transaktion (deliver.rs), nur der Restore entfällt.
 //! 2. **Delayed Render**: `EmptyClipboard` + `SetClipboardData(CF_UNICODE-
 //!    TEXT, NULL)` — wir versprechen den Text, liefern ihn erst auf
 //!    Anforderung. Dazu Opt-out-Marker gegen Win+V-Historie/Cloud-Sync.
@@ -503,15 +504,22 @@ fn keep_format(fmt: u32, present: &[u32]) -> bool {
     const CF_METAFILEPICT: u32 = 3;
     const CF_OEMTEXT: u32 = 7;
     const CF_DIB: u32 = 8;
+    const CF_PALETTE: u32 = 9;
     const CF_LOCALE: u32 = 16;
     const CF_DIBV5: u32 = 17;
+    const CF_ENHMETAFILE: u32 = 14;
     const CF_OWNERDISPLAY: u32 = 0x0080;
     const CF_DSPTEXT: u32 = 0x0082;
     const CF_DSPBITMAP: u32 = 0x0083;
     const CF_DSPMETAFILEPICT: u32 = 0x0084;
+    const CF_DSPENHMETAFILE: u32 = 0x008E;
     match fmt {
-        CF_TEXT | CF_OEMTEXT | CF_METAFILEPICT | CF_LOCALE | CF_OWNERDISPLAY | CF_DSPTEXT
-        | CF_DSPBITMAP | CF_DSPMETAFILEPICT => false,
+        // Synthetisiert (leitet sich nach dem Restore wieder ab) oder ohne
+        // HGLOBAL-Speicher gar nicht im Snapshot (hglobal_backed).
+        CF_TEXT | CF_OEMTEXT | CF_METAFILEPICT | CF_LOCALE | CF_PALETTE | CF_ENHMETAFILE
+        | CF_OWNERDISPLAY | CF_DSPTEXT | CF_DSPBITMAP | CF_DSPMETAFILEPICT | CF_DSPENHMETAFILE => {
+            false
+        }
         CF_BITMAP => !(present.contains(&CF_DIB) || present.contains(&CF_DIBV5)),
         _ => true,
     }
@@ -577,8 +585,43 @@ fn size_verdict(sizes: &[usize]) -> SizeVerdict {
     }
 }
 
+/// Formate, deren Clipboard-Handle KEIN HGLOBAL ist (GDI-Handles bzw.
+/// Owner-Display-Familie): `GlobalSize`/`GlobalLock` darauf ist undefi-
+/// niert und hat Heap-Korruption verursacht (22.11., Diktat nach Bild-
+/// Kopie — CF_BITMAP ist ein HBITMAP). Der Snapshot überspringt sie;
+/// Bitmaps bleiben über CF_DIB/CF_DIBV5 (HGLOBAL) vertreten, das System
+/// synthetisiert CF_BITMAP daraus zurück. Metafile/Palette gehen verloren
+/// (selten, geloggt) — ehrlicher als instabiler Speicherzugriff.
+fn hglobal_backed(fmt: u32) -> bool {
+    const CF_BITMAP: u32 = 2;
+    const CF_METAFILEPICT: u32 = 3;
+    const CF_PALETTE: u32 = 9;
+    const CF_ENHMETAFILE: u32 = 14;
+    const CF_OWNERDISPLAY: u32 = 0x0080;
+    const CF_DSPTEXT: u32 = 0x0082;
+    const CF_DSPBITMAP: u32 = 0x0083;
+    const CF_DSPMETAFILEPICT: u32 = 0x0084;
+    const CF_DSPENHMETAFILE: u32 = 0x008E;
+    !matches!(
+        fmt,
+        CF_BITMAP
+            | CF_METAFILEPICT
+            | CF_PALETTE
+            | CF_ENHMETAFILE
+            | CF_OWNERDISPLAY
+            | CF_DSPTEXT
+            | CF_DSPBITMAP
+            | CF_DSPMETAFILEPICT
+            | CF_DSPENHMETAFILE
+    )
+}
+
 /// Ein Format lesen (Bytes kopieren; das Handle gehört der Zwischenablage).
 fn read_format(fmt: u32) -> Option<Vec<u8>> {
+    if !hglobal_backed(fmt) {
+        debug!("Format {fmt} ohne HGLOBAL-Speicher — nicht snapshotbar");
+        return None;
+    }
     unsafe {
         let Ok(handle) = GetClipboardData(fmt) else {
             debug!("Format {fmt} nicht lesbar — wird im Restore fehlen");
@@ -703,16 +746,39 @@ mod tests {
         assert_eq!(cf(&[13, 0xC001]), vec![13, 0xC001]);
     }
 
+    /// Pflicht-Test nach dem Heap-Crash (22.11.): Formate mit GDI-Handles
+    /// (Bitmap, Metafile, Palette) sind KEIN HGLOBAL — GlobalSize/GlobalLock
+    /// darauf war die Heap-Korruption. Der Snapshot nimmt sie nie an.
+    #[test]
+    fn snapshot_nimmt_nur_hglobal_formate() {
+        assert!(hglobal_backed(13), "CF_UNICODETEXT ist HGLOBAL");
+        assert!(hglobal_backed(8), "CF_DIB ist HGLOBAL");
+        assert!(hglobal_backed(17), "CF_DIBV5 ist HGLOBAL");
+        assert!(hglobal_backed(0xC001), "registrierte Formate sind HGLOBAL");
+        for gdi in [2u32, 3, 9, 14, 0x0080, 0x0082, 0x0083, 0x0084, 0x008E] {
+            assert!(!hglobal_backed(gdi), "Format {gdi} darf nicht gesperrt werden");
+        }
+    }
+
     /// ECHTE Clipboard-Integration: fasst die Zwischenablage des Rechners an
     /// (sichert und stellt sie wieder her, aber ein Kopieren genau in
     /// dieser Sekunde verlöre). Deshalb #[ignore] — nur gezielt laufen
     /// lassen: `cargo test -p private-wispr paste_tx -- --ignored`.
-    /// Der Test spielt die Ziel-App: sein GetClipboardData triggert
+    ///
+    /// Phase 1 — der Test spielt die Ziel-App: sein GetClipboardData triggert
     /// WM_RENDERFORMAT (Lesebestätigung) und muss den Delayed-Render-Text
     /// bekommen; danach muss der Restore den Ausgangszustand zurückbringen.
+    ///
+    /// Phase 2 — Regression des Heap-Crashes (22.11.): CF_BITMAP auf der
+    /// Zwischenablage liefert ein GDI-Handle, kein HGLOBAL — der Snapshot
+    /// darf es NICHT sperren (früher: STATUS_HEAP_CORRUPTION beim ersten
+    /// Diktat nach Bild-Kopie). Die Bitmap geht im Restore verloren (dokumen-
+    /// tiertes Verhalten), der Ablauf darf nicht abstürzen. Beide Phasen in
+    /// EINEM Test, weil sie die eine echte Zwischenablage seriell brauchen.
     #[test]
     #[ignore = "fasst die echte Zwischenablage an — nur gezielt laufen lassen"]
-    fn transaktion_liefert_bestaetigt_und_stellt_wieder_her() {
+    fn transaktion_liefert_bestaetigt_stellt_wieder_her_und_ubersteht_bitmap() {
+        // ── Phase 1: Text-Snapshot, Delayed Render, Bestätigung, Restore ──
         // Ausgangslage: bekannter Nutzer-Inhalt in der Zwischenablage.
         crate::paste::copy_to_clipboard("pw-tx-vorher").unwrap();
         std::thread::sleep(Duration::from_millis(150));
@@ -754,6 +820,24 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(25));
         }
+
+        // ── Phase 2: GDI-Handle-Format darf den Snapshot nicht sprengen ──
+        unsafe {
+            let hdc = windows::Win32::Graphics::Gdi::GetDC(None);
+            let hbm = windows::Win32::Graphics::Gdi::CreateCompatibleBitmap(hdc, 4, 4);
+            windows::Win32::Graphics::Gdi::ReleaseDC(None, hdc);
+            assert!(!hbm.0.is_null(), "Testbitmap nicht erzeugbar");
+            assert!(OpenClipboard(None).is_ok());
+            let _ = EmptyClipboard();
+            let set = SetClipboardData(2 /* CF_BITMAP */, Some(HANDLE(hbm.0 as _)));
+            assert!(set.is_ok() || set.err().map(|e| e.code().0 == 0).unwrap_or(false));
+            let _ = CloseClipboard();
+        }
+        let mut no_read = || -> Result<()> { Ok(()) }; // Receipt bleibt aus — ok
+        let out = run("pw-tx-bild", &mut no_read);
+        // Kein Lesen ⇒ NoReceipt (Text bleibt in der Zwischenablage) —
+        // Hauptbehauptung: der Prozess lebt noch und hat geantwortet.
+        assert_eq!(out, PasteTxOutcome::NoReceipt);
     }
 
     /// Test-Hilfe: CF_UNICODETEXT der echten Zwischenablage lesen.
