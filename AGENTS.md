@@ -31,7 +31,8 @@ src-tauri/src/
                 als reine Funktion: Fokus-Semantik vereinheitlicht (nicht
                 prüfbar ⇒ vertrauen; geblockt nur bei nachgewiesenem
                 Fensterwechsel) + dünne execute() mit ehrlichem Bericht
-                (target/done_msg/history_mode). Hand-off-Fehler ⇒
+                (target/done_msg/history_mode). Cursor-Einfügen läuft über
+                die Paste-Transaktion (paste_tx). Hand-off-Fehler ⇒
                 Zwischenablage, NIEMALS Strg+V (elevated Ziele)
   hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up), frei
                 konfigurierbar: Konflikt-Validierung, Umregistrierung zur
@@ -59,9 +60,19 @@ src-tauri/src/
                 raw/final/applied_rules+Version, Retention (default 90 d)
   model_download.rs  In-App-Modell-Download (ureq, Progress-Events, SHA256,
                 abbrechbar, Resume via Range-Requests)
-  paste.rs      Einfügen: copy_to_clipboard + send_ctrl_v (SendInput Strg+V,
-                getrennt, damit „Einfügen fehlgeschlagen — Text in der
-                Zwischenablage" benennbar ist; deliver.rs entscheidet)
+  paste.rs      Einfügen-Bausteine: copy_to_clipboard (arboard, plain) +
+                send_paste_chord (Strg+V / Strg+Umschalt+V / Umschalt+
+                Einfügen, SendInput) + select_chord (Terminal-Erkennung
+                an EXE-Liste, Setting paste_chord gewinnt)
+  paste_tx.rs   Paste-Transaktion (specs 4.6, ADR 0003, Eigenimplementierung
+                nach Handys paste_tx-Blaupause — IP-Direktive): Delayed-
+                Render-Clipboard, Lesebestätigung via WM_RENDERFORMAT
+                (erst NACH dem Chord zählend — Clipboard-Manager), Clipboard-
+                Restore aus Vollformat-Snapshot mit Sequenznummer-Guard;
+                kein Receipt ⇒ Text bleibt in der Zwischenablage
+  seam.rs       Naht-Kontext (specs 4.6): Cursor-Zeichen links/rechts per
+                UIA-TextPattern der fokussierten App, Hilfsthread + 250-ms-
+                Cap; Scheitern ⇒ SeamContext::none() (kosmetisch)
   feedback.rs   Dezenter Klick beim Aufnahme-Start (WAV-Synthese + PlaySoundW;
                 abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
   handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
@@ -156,9 +167,12 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
 1. ~~Engine läuft in-process~~ ✅ Sprint 3.1: isolierter Worker-Prozess
    (`engine_worker.rs`, Supervisor mit Neustart); `SttEngine`-Trait hält die
    Tür für ein CUDA-Sidecar offen.
-2. **Paste ist einfach** (kein Clipboard-Restore, keine Terminal-Erkennung,
-   kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
-   nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).
+2. ~~**Paste ist einfach** (kein Clipboard-Restore, keine Terminal-Erkennung,
+   kein Delayed-Render)~~ ✅ Sprint 3.2: Paste-Transaktion als Eigenimplementierung
+   nach Handys `paste_tx`-Blaupause (IP-Direktive beachtet — Konzept studiert,
+   kein Code übernommen); Details und abgelehnte Alternativen in ADR 0003.
+   Noch offen aus specs 4.6: Paste-Chord pro App merken (statt nur Terminal-
+   Liste) — Backlog.
 3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
 4. **Aufnahmemodus je Hotkey fest verdrahtet:** Cursor = Halten, Hand-off =
    Toggle (Sprint 3.1+). Specs 4.3 sieht „Toggle"/„Hold-or-Toggle" als
