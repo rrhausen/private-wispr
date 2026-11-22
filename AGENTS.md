@@ -74,10 +74,12 @@ src-tauri/src/
   selftest.rs   Headless `--selftest [wav|verzeichnis]` — Einzel-WAV oder
                 Batch mit WER gegen Ground-Truths (Eval-Harness)
 src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
-                Übersicht: Letzte Diktate-Liste aus der Historie),
-                settings.tsx (Hotkeys, Ablageort, Mikrofon, Wörterbuch-
-                profile, Overlay, Sound, Autostart, Modell-Download),
-                overlay.tsx (Pille)
+                Übersicht: Letzte Diktate-Liste aus der Historie; App reicht
+                nur durch, was die Übersicht zeigt), settings.tsx (Hotkeys,
+                Ablageort, Mikrofon, Wörterbuch-Profile, Overlay, Sound,
+                Autostart, Modell-Download, Version — lädt Mikrofon/Geräte/
+                Ablageort selbst), theme.ts (Farbschema: „system" auflösen,
+                OS-Wechsel-Listener einmalig montiert), overlay.tsx (Pille)
 ```
 
 **Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →

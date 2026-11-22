@@ -2,6 +2,8 @@
 // Hand-off-Ablageort, Mikrofon, Overlay, Sound, Autostart, Modell-Download.
 // Aufbau: Sektionskopf über der Karte, Zeilen mit Titel/Untertitel links und
 // Control rechts — eine Control-Breite pro Karte für ruhige Kanten.
+// K5: Mikrofon, Geräte und Ablageort lädt das Panel selbst (die Übersicht
+// zeigt sie nicht) — App reicht nur durch, was sie auch zeigt.
 import { useEffect, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,6 +14,7 @@ import {
   enable as enableAutostart,
   isEnabled,
 } from "@tauri-apps/plugin-autostart";
+import type { Theme } from "./theme";
 
 interface Hotkeys {
   cursor: string;
@@ -31,16 +34,11 @@ interface DictionaryStatus {
 interface Props {
   hotkeys: Hotkeys;
   onHotkeysChange: (hotkeys: Hotkeys) => void;
-  mic: string | null;
-  devices: string[];
-  onMicChange: (name: string | null) => void;
-  effectiveHandoffDir: string;
-  onHandoffDirChange: (effective: string) => void;
   modelPresent: boolean;
   engineReady: boolean;
   engineModel: string;
-  theme: "dark" | "light" | "system";
-  onThemeChange: (theme: "dark" | "light" | "system") => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }
 
 type CaptureTarget = "cursor" | "handoff" | null;
@@ -137,11 +135,6 @@ function SwitchRow({
 export default function SettingsPanel({
   hotkeys,
   onHotkeysChange,
-  mic,
-  devices,
-  onMicChange,
-  effectiveHandoffDir,
-  onHandoffDirChange,
   modelPresent,
   engineReady,
   engineModel,
@@ -161,13 +154,32 @@ export default function SettingsPanel({
   const [dict, setDict] = useState<DictionaryStatus | null>(null);
   const [dictError, setDictError] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
+  // Eigene Nebensachen (K5): Mikrofon + Geräte + Ablageort — hier geladen
+  // und gehalten, nicht mehr durch App durchgereicht.
+  const [mic, setMic] = useState<string | null>(null);
+  const [devices, setDevices] = useState<string[]>([]);
+  const [effectiveHandoffDir, setEffectiveHandoffDir] = useState("");
 
   useEffect(() => {
     invoke<DictionaryStatus>("dictionary_status").then(setDict).catch(console.error);
     // Versionsnummer der installierten App (aus tauri.conf.json; dort wird
     // sie beim Release gemeinsam mit Cargo.toml/package.json gebumpt).
     getVersion().then(setVersion).catch(console.error);
+    invoke<{ mic: string | null; handoff_dir: string }>("status")
+      .then((s) => {
+        setMic(s.mic);
+        setEffectiveHandoffDir(s.handoff_dir);
+      })
+      .catch(console.error);
+    invoke<string[]>("list_devices")
+      .then((names) => setDevices(names))
+      .catch(console.error);
   }, []);
+
+  function chooseMic(name: string | null) {
+    setMic(name);
+    invoke("set_mic", { name }).catch(console.error);
+  }
 
   // Profil umschalten: aktive Liste neu setzen, Status kommt zurück.
   async function toggleProfile(name: string) {
@@ -427,7 +439,7 @@ export default function SettingsPanel({
     try {
       const effective = await invoke<string>("set_handoff_dir", { path });
       setCustomHandoffDir(path);
-      onHandoffDirChange(effective);
+      setEffectiveHandoffDir(effective);
     } catch (e) {
       setHandoffError(String(e));
     }
@@ -644,7 +656,7 @@ export default function SettingsPanel({
         <select
           className="select"
           value={mic ?? ""}
-          onChange={(e) => onMicChange(e.target.value === "" ? null : e.target.value)}
+          onChange={(e) => chooseMic(e.target.value === "" ? null : e.target.value)}
         >
           <option value="">System-Standard</option>
           {devices.map((name) => (

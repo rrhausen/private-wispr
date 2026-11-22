@@ -1,15 +1,16 @@
 // Hauptfenster (M1): Tabs Übersicht/Einstellungen. Übersicht zeigt Engine-
-// Status, Hotkey-Hinweise und letztes Diktat; Einstellungen (settings.tsx)
-// Hotkeys, Hand-off-Ablageort, Mikrofon, Overlay, Sound, Autostart, Modell.
+// Status, Hotkey-Hinweise und letztes Diktat. Das Settings-Panel (settings.tsx)
+// lädt seine Nebensachen (Mikrofon, Geräte, Hand-off-Ablageort) selbst —
+// App reicht nur durch, was die Übersicht auch zeigt (Hotkeys, Engine-Status,
+// Farbschema). Die Farbschema-Maschinerie liegt in theme.ts.
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SettingsPanel, { hotkeyLabel } from "./settings";
+import { useTheme } from "./theme";
 
 interface StatusInfo {
   hotkeys: { cursor: string; handoff: string };
-  mic: string | null;
-  handoff_dir: string;
   engine: {
     ready: boolean;
     model: string;
@@ -94,41 +95,15 @@ function statusCapsule(engine: StatusInfo["engine"] | undefined) {
   return { tone: "busy", label: "Modell lädt" } as const;
 }
 
-export type Theme = "dark" | "light" | "system";
-
-/** Setzt das effektive Schema am <html> („system" wird über die
- *  prefers-color-scheme der Windows-App-Darstellung aufgelöst) und
- *  liefert es zurück — Grundlage für den Sonne/Mond-Knopf. */
-function applyTheme(theme: Theme): "dark" | "light" {
-  const effective =
-    theme === "system" && window.matchMedia("(prefers-color-scheme: light)").matches
-      ? "light"
-      : theme === "system"
-        ? "dark"
-        : theme;
-  document.documentElement.dataset.theme = effective;
-  try {
-    localStorage.setItem("pw-theme", effective);
-  } catch {
-    /* Cache ist optional (Flash-Vermeidung beim Start). */
-  }
-  return effective;
-}
-
 export default function App() {
   const [tab, setTab] = useState<"overview" | "settings">("overview");
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [last, setLast] = useState<LastEvent | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [theme, setTheme] = useState<Theme>("dark");
-  /** Effektives Schema („system" aufgelöst) — steuert Sonne/Mond-Knopf. */
-  const [isLight, setIsLight] = useState(false);
+  const { theme, isLight, setTheme, toggleTheme } = useTheme();
   const [upgrade, setUpgrade] = useState<UpgradePlan | null>(null);
   const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
-  const [devices, setDevices] = useState<string[]>([]);
-  const [mic, setMic] = useState<string | null>(null);
-  const [handoffDir, setHandoffDir] = useState("");
   const [hotkeys, setHotkeys] = useState<StatusInfo["hotkeys"]>({
     cursor: "ctrl+alt+space",
     handoff: "ctrl+alt+h",
@@ -170,24 +145,6 @@ export default function App() {
     };
   }, []);
 
-  // Farbschema aus den Settings laden; im Modus „System" auf OS-Wechsel
-  // reagieren (auch zur Laufzeit, z. B. automatischer Wechsel abends).
-  useEffect(() => {
-    invoke<{ theme: string }>("get_settings")
-      .then((s) => {
-        const t = (["dark", "light", "system"] as const).includes(s.theme as Theme)
-          ? (s.theme as Theme)
-          : "dark";
-        setTheme(t);
-        setIsLight(applyTheme(t) === "light");
-      })
-      .catch(console.error);
-    const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const onChange = () => setIsLight(applyTheme(theme) === "light");
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [theme]);
-
   // Ältere Installation auf diesem Rechner? (Portable Kopie einer neueren
   // Version gestartet → sauberes In-Place-Upgrade anbieten, kein Auto-
   // Update im Hintergrund.)
@@ -211,30 +168,12 @@ export default function App() {
       .catch((e) => setUpgradeMsg(String(e)));
   }
 
-  function chooseTheme(t: Theme) {
-    setTheme(t);
-    setIsLight(applyTheme(t) === "light");
-    invoke("set_theme", { theme: t }).catch(console.error);
-  }
-
-  /** Schnell-Umschalter im Header: Icon zeigt das Ziel des Klicks — im
-   *  dunklen Modus eine Sonne (Klick → hell), im hellen ein Mond.
-   *  „System" wird dabei aufgelöst und zum konkreten Schema. */
-  function toggleTheme() {
-    chooseTheme(isLight ? "dark" : "light");
-  }
-
   useEffect(() => {
     invoke<StatusInfo>("status")
       .then((s) => {
         setStatus(s);
-        setMic(s.mic);
-        setHandoffDir(s.handoff_dir);
         setHotkeys(s.hotkeys);
       })
-      .catch(console.error);
-    invoke<string[]>("list_devices")
-      .then((names) => setDevices(names))
       .catch(console.error);
     const un1 = listen<StatusInfo["engine"]>("pw://status", (e) => {
       setStatus((prev) => (prev ? { ...prev, engine: e.payload } : prev));
@@ -245,11 +184,6 @@ export default function App() {
       void un2.then((f) => f());
     };
   }, []);
-
-  function chooseMic(name: string | null) {
-    setMic(name);
-    invoke("set_mic", { name }).catch(console.error);
-  }
 
   const engine = status?.engine;
   const capsule = statusCapsule(engine);
@@ -459,16 +393,11 @@ export default function App() {
         <SettingsPanel
           hotkeys={hotkeys}
           onHotkeysChange={setHotkeys}
-          mic={mic}
-          devices={devices}
-          onMicChange={chooseMic}
-          effectiveHandoffDir={handoffDir}
-          onHandoffDirChange={setHandoffDir}
           modelPresent={engine?.model_present ?? false}
           engineReady={engine?.ready ?? false}
           engineModel={engine?.model ?? ""}
           theme={theme}
-          onThemeChange={chooseTheme}
+          onThemeChange={setTheme}
         />
       )}
 
