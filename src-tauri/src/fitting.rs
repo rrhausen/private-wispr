@@ -4,14 +4,15 @@
 //! danach weitergeschrieben wird.
 //!
 //! Nahtstellen: `SeamContext` beschreibt die Zeichen links und rechts des
-//! Cursors in der Ziel-App. Das Lesen des Zieltexts (UIA o. ä.) folgt mit
-//! der Paste-Transaktion (M1 Sprint 3) — bis dahin läuft die App mit
-//! `SeamContext::none()`: dann wirken die satzinternen Regeln (Abstände,
-//! Kommata, Funktionswörter, Erstbuchstabe), und der Schluss-Punkt bleibt
-//! sicherheitshalber stehen.
+//! Cursors in der Ziel-App. Seit Sprint 3.2 liest seam.rs sie per UIA aus
+//! der fokussierten App (Cursor-Modus); Scheitern ergibt `SeamContext::
+//! none()`: dann wirken die satzinternen Regeln (Abstände, Kommata,
+//! Funktionswörter, Erstbuchstabe), und der Schluss-Punkt bleibt sicher-
+//! heitshalber stehen. Der Selftest misst weiter mit `none()` — die
+//! WER-Kennzahl bleibt vergleichbar.
 
 /// Zeichen am Cursor der Ziel-App (None = unbekannt, keine Naht-Regeln).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SeamContext {
     pub char_before: Option<char>,
     pub char_after: Option<char>,

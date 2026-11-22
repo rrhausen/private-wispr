@@ -24,6 +24,7 @@ mod paste;
 mod paste_tx;
 mod recording;
 pub mod selftest;
+mod seam;
 mod settings;
 pub mod stt;
 mod upgrade;
@@ -659,6 +660,14 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         // Wörterbuch je Diktat frisch laden (Datei ist jederzeit editierbar);
         // Ladefehler werden in load() geloggt und ergeben ein leeres Wörterbuch.
         let dict = dictionary::Dictionary::load();
+        // Naht-Kontext (specs 4.6): Zeichen links/rechts des Cursors in der
+        // Ziel-App, gelesen während der Fokus noch dort steht — nur fürs
+        // Cursor-Diktat; UIA-Lesen mit Zeit-Cap, Scheitern ⇒ none() (seam.rs).
+        let seam = if mode == OutputMode::Cursor {
+            seam::read()
+        } else {
+            fitting::SeamContext::none()
+        };
         let mut guard = engine.lock().unwrap();
         // Engine weg (z. B. Worker-Crash): sichtbar melden statt still
         // zurückkehren — sonst bliebe die Pille in „transcribing" hängen.
@@ -677,14 +686,14 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         };
         // Diktat-Verarbeitung (GLOSSARY): die stille Pipeline inkl. Audio-
         // Politik (specs 4.8) steckt im tiefen Modul — derselbe Code, den
-        // auch der Selftest misst. Naht-Kontext (Zeichen am Cursor der
-        // Ziel-App) folgt mit der Paste-Transaktion, Sprint 3.
+        // auch der Selftest misst. Der Naht-Kontext bringt die echten
+        // Cursor-Zeichen der Ziel-App in die Naht-Regeln (fitting.rs).
         let outcome = dictation::process(
             &spooled,
             mode,
             &mut **engine,
             &dict,
-            fitting::SeamContext::none(),
+            seam,
             settings::current().archive_audio,
         );
         match outcome {
