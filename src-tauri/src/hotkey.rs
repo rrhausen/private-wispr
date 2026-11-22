@@ -421,10 +421,16 @@ fn handle_event(app: &AppHandle, ev: &KeyEvent) {
         ptt_edges(&ACTIVE.lock().unwrap(), &mut pressed, ev)
     };
     for (mode, down) in edges {
-        if down {
-            crate::on_ptt_down(app, mode);
-        } else {
-            crate::on_ptt_up(app);
+        match (mode, down) {
+            // Hand-off ist ein Toggle (specs 4.3): Antippen startet bzw.
+            // beendet die Aufnahme — die Release-Kante (Loslassen nach dem
+            // Antippen) gehört bewusst NICHT zur Steuerung, sonst wäre die
+            // Aufnahme nach dem Start sofort wieder vorbei.
+            (OutputMode::Handoff, true) => crate::on_handoff_toggle(app),
+            (OutputMode::Handoff, false) => {}
+            // Cursor behält klassisches Push-to-Talk: halten = aufnehmen.
+            (OutputMode::Cursor, true) => crate::on_ptt_down(app, mode),
+            (OutputMode::Cursor, false) => crate::on_ptt_up(app),
         }
     }
 }

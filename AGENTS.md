@@ -21,7 +21,8 @@ src-tauri/src/
   lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
   hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up) — frei
                 konfigurierbar (M1): Key-Capture, Konflikt-Validierung,
-                Umregistrierung zur Laufzeit mit Rollback
+                Umregistrierung zur Laufzeit mit Rollback. Cursor = Halten
+                (PTT), Hand-off = Toggle (Antippen startet/stoppt)
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
                 WAV wird nach Transkription default gelöscht (specs 4.8)
@@ -131,6 +132,9 @@ Build-Fehlern („cmake not found") diesen Pfad in PATH aufnehmen.
    kein Delayed-Render) — M1-Sprint 3: Paste-Transaktion als Eigenimplementierung
    nach Handys `paste_tx`-Blaupause (IP-Direktive beachten, keine Code-Übernahme).
 3. **Kein VAD** in der Aufnahme (Policy-Parameter folgen mit M1-Regel-Pipeline).
+3a. **Aufnahmemodus je Hotkey fest verdrahtet:** Cursor = Halten, Hand-off =
+   Toggle (Sprint 3.1+). Specs 4.3 sieht „Toggle"/„Hold-or-Toggle" als
+   **wählbare** Modi vor — ein Setting dafür (auch pro Hotkey) folgt später.
 4. **Wörterbuch** ✅ Sprint 2 (`dictionary.rs`); Fuzzy/Phonetik bleibt v2
    (Kölner Phonetik, NICHT ASCII-Soundex — Handys Fuzzy ist für Deutsch ungeeignet).
 5. **Historie** ✅ Sprint 2 (`history.rs`, SQLite inkl. applied_rules).

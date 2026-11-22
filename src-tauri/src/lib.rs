@@ -559,6 +559,49 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Entscheidung des Hand-off-Toggles — rein (ohne AppHandle), damit unit-
+/// testbar. `running`: Modus einer laufenden Aufnahme, falls eine läuft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ToggleAction {
+    /// Keine Aufnahme läuft → Hand-off-Aufnahme starten.
+    Start,
+    /// Hand-off-Aufnahme läuft → beenden (transkribieren + ausgeben).
+    Stop,
+    /// Cursor-Aufnahme (PTT, gehalten) läuft → nicht anfassen.
+    Ignore,
+}
+
+pub(crate) fn handoff_toggle_action(running: Option<OutputMode>) -> ToggleAction {
+    match running {
+        None => ToggleAction::Start,
+        Some(OutputMode::Handoff) => ToggleAction::Stop,
+        Some(OutputMode::Cursor) => ToggleAction::Ignore,
+    }
+}
+
+/// Hand-off-Hotkey mit Toggle-Semantik (specs 4.3): Einmal antippen startet
+/// die Aufnahme, nochmaliges Antippen beendet sie. Damit sind lange Diktate
+/// (Brain-Dump ≥ 10 min, specs 4.2) möglich, ohne die Taste minutenlang
+/// halten zu müssen. Die Cursor-Kombination behält Hold-Semantik — läuft
+/// gerade eine Cursor-Aufnahme (Taste gehalten), wird das Antippen ignoriert.
+pub(crate) fn on_handoff_toggle(app: &AppHandle) {
+    let running = {
+        let state = app.state::<AppState>();
+        let running = state.recording.lock().unwrap().as_ref().map(|a| a.mode);
+        running
+    };
+    match handoff_toggle_action(running) {
+        ToggleAction::Start => on_ptt_down(app, OutputMode::Handoff),
+        ToggleAction::Stop => {
+            info!("Hand-off-Toggle: laufende Aufnahme wird beendet");
+            on_ptt_up(app);
+        }
+        ToggleAction::Ignore => {
+            info!("Hand-off-Toggle ignoriert: Cursor-Aufnahme (Halten) läuft");
+        }
+    }
+}
+
 /// Hotkey-Taste gedrückt: Aufnahme starten (wenn Engine bereit und nicht
 /// bereits aufgenommen wird). Der Modus kommt vom auslösenden Hotkey.
 pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
@@ -844,4 +887,25 @@ fn position_bottom_center(w: &tauri::WebviewWindow) {
         monitor.position().x + (size.width as i32 - win_w) / 2,
         monitor.position().y + size.height as i32 - win_h - ((96.0 * scale) as i32),
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handoff_toggle_entscheidung() {
+        // Ohne laufende Aufnahme startet das Antippen.
+        assert_eq!(handoff_toggle_action(None), ToggleAction::Start);
+        // Läuft eine Hand-off-Aufnahme, beendet das Antippen sie.
+        assert_eq!(
+            handoff_toggle_action(Some(OutputMode::Handoff)),
+            ToggleAction::Stop
+        );
+        // Eine gehaltene Cursor-Aufnahme (PTT) wird nicht angetastet.
+        assert_eq!(
+            handoff_toggle_action(Some(OutputMode::Cursor)),
+            ToggleAction::Ignore
+        );
+    }
 }

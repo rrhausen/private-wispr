@@ -376,7 +376,7 @@ export default function App() {
           </section>
 
           <section className="section">
-            <div className="section-head">Diktat — Taste halten, sprechen, loslassen</div>
+            <div className="section-head">Diktat — Cursor: Taste halten · Hand-off: antippen</div>
             <div className="card">
               <div className="row-line">
                 <div className="row-text">
@@ -390,7 +390,8 @@ export default function App() {
                 <div className="row-text">
                   <span className="row-title">Hand-off-Tagesdatei</span>
                   <span className="row-sub">
-                    Für elevated Apps (z. B. Agenten-IDEs), die Strg+V nicht annehmen
+                    Einmal antippen startet, nochmal beendet — für elevated Apps
+                    (Strg+V geht nicht) und lange Diktate
                   </span>
                 </div>
                 <span className="kbd">{hotkeyLabel(hotkeys.handoff)}</span>

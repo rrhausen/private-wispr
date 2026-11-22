@@ -569,18 +569,18 @@ export default function SettingsPanel({
 
   return (
     <div className="settings">
-      <Section head="Tastenkombinationen — halten zum Diktieren">
+      <Section head="Tastenkombinationen — Cursor halten, Hand-off antippen">
         {hotkeyRow(
           "cursor",
           "Diktat am Cursor",
-          "Text erscheint in der fokussierten App",
+          "Taste halten = aufnehmen, loslassen = einfügen",
           hotkeys.cursor,
         )}
         <div className="divider" />
         {hotkeyRow(
           "handoff",
           "Hand-off-Diktat",
-          "Eintrag in die Tagesdatei (für elevated Apps)",
+          "Antippen startet, nochmaliges Antippen beendet (gut für lange Diktate)",
           hotkeys.handoff,
         )}
         <span className="row-sub">
@@ -588,7 +588,9 @@ export default function SettingsPanel({
           Modifier (z. B. Strg+Alt). Escape bricht ab. Nackte Tasten ohne Modifier sind nicht
           erlaubt, weil sie in anderen Apps blockiert wären. Strg/Alt/Shift/Win links und rechts
           werden unterschieden: „nur Strg rechts“ (Taste drücken und loslassen) ist ein bequemes
-          Ein-Tasten-Diktat, weil die rechte Strg beim Schreiben kaum benutzt wird.
+          Ein-Tasten-Diktat, weil die rechte Strg beim Schreiben kaum benutzt wird. Das
+          Hand-off-Diktat ist ein Umschalter: Die Aufnahme läuft nach dem Antippen weiter, bis du
+          die Kombination erneut drückst — die Pille unten zeigt an, dass du live bist.
         </span>
         {!hookReady && (
           <div className="notice" data-tone="error">
