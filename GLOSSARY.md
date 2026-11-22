@@ -20,6 +20,10 @@ _Avoid_: Normaler Modus, Einfüge-Modus
 Diktat, dessen fertiger Text in die Tagesdatei wandert — für Ziele, die Strg+V nicht annehmen; Taste ist Umschalter (antippen startet, nochmal beendet).
 _Avoid_: Handoff-Datei-Modus, Ablage-Modus
 
+**Ausliefern**:
+Der Vorgang, der den fertigen Text eines Diktats an sein Ziel bringt — am Cursor einfügen, in die Zwischenablage legen oder der Hand-off-Tagesdatei anhängen. Plant das Ziel als reine Entscheidung (inklusive Fokus-Semantik) und berichtet ehrlich, wohin der Text wirklich ging — auch im Fehlerfall.
+_Avoid_: Ausgabe (sagt nicht, wohin), Einfügen (ist nur das Cursor-Ziel)
+
 **Wörterbuch**:
 Die editierbare Regelsammlung, die erkannte Schreibweisen in kanonische überführt — Kanones wirken zusätzlich als Fachwortschatz in der Erkennung.
 _Avoid_: Ersetzungsliste, Fachwortschatz allein (ist nur eine Wirkung)

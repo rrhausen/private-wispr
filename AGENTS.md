@@ -27,6 +27,12 @@ src-tauri/src/
                 komplette Audio-Politik (specs 4.8, jeden Pfad entsorgt).
                 App und Selftest rufen dieselbe process(); Abhängigkeiten
                 injiziert, Fake-Engine als Test-Adapter
+  deliver.rs    Ausliefern (GLOSSARY.md) — plan(mode, fokus, vordergrund)
+                als reine Funktion: Fokus-Semantik vereinheitlicht (nicht
+                prüfbar ⇒ vertrauen; geblockt nur bei nachgewiesenem
+                Fensterwechsel) + dünne execute() mit ehrlichem Bericht
+                (target/done_msg/history_mode). Hand-off-Fehler ⇒
+                Zwischenablage, NIEMALS Strg+V (elevated Ziele)
   hotkey.rs     PTT-Hotkeys (handy-keys, Low-Level-Hook, key-up), frei
                 konfigurierbar: Konflikt-Validierung, Umregistrierung zur
                 Laufzeit. Cursor = Halten (PTT), Hand-off = Toggle.
@@ -47,13 +53,15 @@ src-tauri/src/
   fitting.rs    Text-Fitting (specs 4.6): Abstände, Satzanfang, Funktions-
                 wörter klein, Nahtstellen + Schluss-Punkt via SeamContext
   focus.rs      Fokus-Check (specs 4.6): Ziel-HWND+Prozess bei Aufnahmebeginn
-                merken; Fokuswechsel → Zwischenablage statt falschem Feld
+                merken; Vergleichs-Semantik liegt in deliver::plan (nicht
+                prüfbar ⇒ vertrauen, Wechsel ⇒ Zwischenablage)
   history.rs    Historie (specs 4.8): SQLite in %APPDATA%\PrivateWispr\,
                 raw/final/applied_rules+Version, Retention (default 90 d)
   model_download.rs  In-App-Modell-Download (ureq, Progress-Events, SHA256,
                 abbrechbar, Resume via Range-Requests)
-  paste.rs      Einfügen (M0: Clipboard + SendInput Strg+V; copy_to_clipboard
-                für Fokus-Wechsel-Fallback)
+  paste.rs      Einfügen: copy_to_clipboard + send_ctrl_v (SendInput Strg+V,
+                getrennt, damit „Einfügen fehlgeschlagen — Text in der
+                Zwischenablage" benennbar ist; deliver.rs entscheidet)
   feedback.rs   Dezenter Klick beim Aufnahme-Start (WAV-Synthese + PlaySoundW;
                 abschaltbar). rodio geht nicht: cpal-Links-Konflikt mit handy-recorder
   handoff.rs    Hand-off-Diktat in Tagesdateien; Ablageort konfigurierbar
@@ -70,8 +78,10 @@ src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
 **Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →
 Overlay „recording" → Released → `recording::stop` → Thread:
 `dictation::process` (stille Pipeline: transcribe + Regeln + Fitting +
-Audio-Politik) → `paste::paste_text` (Fokus-Check) bzw. `handoff::append` →
-`history::insert` → Overlay „done". Events: `pw://status`, `pw://overlay`,
+Audio-Politik) → Ausliefern: `deliver::plan` (reine Ziel-Entscheidung mit
+Fokus-Semantik) + `deliver::execute` (dünn: Zwischenablage/Strg+V/Hand-off,
+ehrlicher Bericht) → `history::insert` → Overlay „done".
+Events: `pw://status`, `pw://overlay`,
 `pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hook-status`,
 `pw://model-download`, `pw://history-changed`.
 
