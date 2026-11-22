@@ -8,6 +8,7 @@
 //! in-process (Worker-Prozess-Isolation kommt in M1), Paste noch ohne
 //! Clipboard-Restore/Read-Receipt (paste_tx-Portierung M1), Wörterbuch erst M1.
 
+mod deliver;
 mod dictionary;
 pub mod dictation;
 pub mod engine_worker;
@@ -76,7 +77,8 @@ struct LastPayload {
     applied_rules: Vec<dictionary::AppliedRule>,
     audio_secs: f64,
     transcription_ms: u128,
-    /// Wohin der Text ging: "Cursor" oder der hand-off-Dateipfad.
+    /// Wohin der Text ging: „Cursor", Zwischenablage-Fälle oder der
+    /// Hand-off-Dateipfad — ehrlich, siehe deliver::execute.
     target: String,
 }
 
@@ -707,56 +709,11 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 ..
             } => {
                 let info = engine.info().clone();
-                // Ausgabe im Modus der Aufnahme: Cursor-Paste oder Hand-off-Datei.
-                // history_mode protokolliert, was tatsächlich passiert ist
-                // („clipboard" = Fokus-Wechsel-Fallback).
-                let (target, done_msg, history_mode) = match mode {
-                    OutputMode::Cursor => {
-                        // Fokus-Check (specs 4.6): Ein anderes Fenster vorne
-                        // heißt, Strg+V würde ins falsche Feld gehen — Text
-                        // nur in die Zwischenablage, mit klarer Meldung.
-                        let focus_ok =
-                            focus_snap.as_ref().map_or(true, |s| s.is_foreground());
-                        if focus_ok {
-                            if let Err(e) = paste::paste_text(&final_text) {
-                                warn!(
-                                    "Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage."
-                                );
-                            }
-                            ("Cursor".to_string(), None, "cursor")
-                        } else {
-                            info!(
-                                "Fokus gewechselt (Ziel war {:?}) — Text in die Zwischenablage",
-                                focus_snap.as_ref().and_then(|s| s.process.clone())
-                            );
-                            if let Err(e) = paste::copy_to_clipboard(&final_text) {
-                                error!("Zwischenablage fehlgeschlagen ({e:#})");
-                            }
-                            (
-                                "Zwischenablage (Fokus gewechselt)".to_string(),
-                                Some("→ Zwischenablage — Fokus gewechselt".to_string()),
-                                "clipboard",
-                            )
-                        }
-                    }
-                    OutputMode::Handoff => {
-                        let (target, ok) = match handoff::append(&final_text) {
-                            Ok(path) => {
-                                info!("Hand-off geschrieben: {}", path.display());
-                                (path.display().to_string(), true)
-                            }
-                            Err(e) => {
-                                error!("Hand-off fehlgeschlagen ({e:#}) — Fallback: Cursor-Paste");
-                                if let Err(e) = paste::paste_text(&final_text) {
-                                    warn!("Einfügen fehlgeschlagen ({e:#}) — Text liegt in der Zwischenablage.");
-                                }
-                                ("Cursor (Hand-off fehlgeschlagen)".to_string(), false)
-                            }
-                        };
-                        let done_msg = if ok { Some("→ hand-off ✓".to_string()) } else { None };
-                        (target, done_msg, "handoff")
-                    }
-                };
+                // Ausliefern (GLOSSARY): reine Ziel-Entscheidung inklusive
+                // Fokus-Semantik + dünne Ausführung im eigenen Modul — hier
+                // bleibt nur die Verdrahtung Bericht → Event/Historie/Overlay.
+                let plan = deliver::plan(mode, focus_snap.as_ref(), focus::foreground_hwnd());
+                let report = deliver::execute(&plan, &final_text);
                 let _ = handle.emit(
                     "pw://last",
                     LastPayload {
@@ -765,14 +722,14 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                         applied_rules: applied.clone(),
                         audio_secs,
                         transcription_ms,
-                        target,
+                        target: report.target.clone(),
                     },
                 );
                 // Historie (specs 4.8): Rohtranskript, Endtext, angewandte
                 // Regeln mit Version, Ziel-App, Modell/Engine. Ein Fehler
                 // hier darf das Diktat nicht ungeschehen machen.
                 let entry = history::NewEntry {
-                    mode: history_mode.to_string(),
+                    mode: report.history_mode.to_string(),
                     raw_transcript: raw.clone(),
                     final_text: final_text.clone(),
                     dictionary_version,
@@ -787,7 +744,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 } else {
                     let _ = handle.emit("pw://history-changed", ());
                 }
-                overlay_emit(&handle, OverlayPayload { phase: "done", message: done_msg, level: None });
+                overlay_emit(&handle, OverlayPayload { phase: "done", message: report.done_msg, level: None });
                 overlay_hide_later(&handle, Duration::from_millis(900));
             }
         }

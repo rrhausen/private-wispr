@@ -1,9 +1,12 @@
 //! Fokus-Check (specs 4.6): Bei Aufnahmebeginn wird das Vordergrund-Fenster
-//! gemerkt (HWND + Prozessname). Ist beim Einfügen ein anderes Fenster
-//! vorne, landet der Text in der Zwischenablage statt im falschen Feld —
-//! mit klarer Meldung (Overlay-Zielangabe; E-Mail an den Chef tippt nicht
-//! versehentlich in den Chat). Prozessname dient zugleich als `target_app`
-//! für die Historie (specs 4.8).
+//! gemerkt (HWND + Prozessname). Die Auslieferung (deliver.rs) vergleicht
+//! beim Einfügen: Steht nachweisbar ein anderes Fenster vorne, landet der
+//! Text in der Zwischenablage statt im falschen Feld — mit klarer Meldung
+//! (Overlay-Zielangabe; E-Mail an den Chef tippt nicht versehentlich in den
+//! Chat). Prozessname dient zugleich als `target_app` für die Historie
+//! (specs 4.8). Dieses Modul liefert nur die Win32-Griffe (Snapshot,
+//! Vordergrund-Fenster); die Vergleichs-Semantik (nicht prüfbar ⇒
+//! vertrauen) liegt in `deliver::plan`.
 
 use windows::core::PWSTR;
 use windows::Win32::Foundation::{CloseHandle, HWND};
@@ -22,15 +25,6 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Steht das gemerkte Fenster noch im Vordergrund?
-    pub fn is_foreground(&self) -> bool {
-        if self.hwnd == 0 {
-            return false;
-        }
-        let fg = unsafe { GetForegroundWindow() };
-        fg.0 as isize == self.hwnd
-    }
-
     /// Kurze Ziel-App-Angabe für Meldung/Historie.
     pub fn target_label(&self) -> String {
         self.process
@@ -39,10 +33,17 @@ impl Snapshot {
     }
 }
 
+/// Aktuelles Vordergrund-Fenster (0, wenn gerade keines vorne steht).
+/// Reiner Win32-Griff für `deliver::plan` — die Semantik des Vergleichs
+/// (vertrauen/blocken) liegt dort.
+pub fn foreground_hwnd() -> isize {
+    unsafe { GetForegroundWindow().0 as isize }
+}
+
 /// Aktuelles Vordergrund-Fenster einfangen (bei Aufnahmebeginn aufrufen).
 pub fn capture() -> Snapshot {
-    let hwnd = unsafe { GetForegroundWindow() };
-    Snapshot { hwnd: hwnd.0 as isize, process: process_name(hwnd) }
+    let hwnd = foreground_hwnd();
+    Snapshot { hwnd, process: process_name(HWND(hwnd as _)) }
 }
 
 fn process_name(hwnd: HWND) -> Option<String> {

@@ -101,9 +101,3 @@ pub fn send_ctrl_v() -> Result<()> {
     );
     Ok(())
 }
-
-/// Kopieren und Strg+V in einem Schritt (Komfort-Kombination beider Teile).
-pub fn paste_text(text: &str) -> Result<()> {
-    copy_to_clipboard(text)?;
-    send_ctrl_v()
-}
