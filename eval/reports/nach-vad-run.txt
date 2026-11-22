@@ -1,0 +1,72 @@
+Modell: parakeet-tdt-0.6b-v3-Q8_0 · Vulkan1 · GPU · Load 1056 ms
+VAD: aktiv (silero-vad-v6.2-F32.gguf)
+  ✓ bt700-bericht-01 (49.4 s)
+  ✓ bt700-braindump-01 (632.4 s)
+  ✓ bt700-chat-01 (32.6 s)
+  ✓ bt700-fachbegriffe-01 (110.0 s)
+  ✓ bt700-fachbegriffe-02 (65.5 s)
+  ✓ bt700-mail-01 (48.9 s)
+  ✓ bt700-mix-01 (110.5 s)
+  ✓ bt700-namen-01 (20.3 s)
+  ✓ bt700-natuerlich-01 (44.6 s)
+  ✓ bt700-notiz-01 (75.8 s)
+  ✓ bt700-zahlen-01 (92.2 s)
+
+Clip                           Sek.      RTF   WER roh  WER final  Fehler
+----------------------------------------------------------------------------
+bt700-bericht-01               49.4    0.006     10.6%      2.9%       2
+bt700-braindump-01            632.4    0.009      2.0%      0.9%       9
+bt700-chat-01                  32.6    0.006      5.6%      2.8%       1
+bt700-fachbegriffe-01         110.0    0.010      2.6%      2.6%       5
+bt700-fachbegriffe-02          65.5    0.012      4.5%      0.8%       1
+bt700-mail-01                  48.9    0.008      1.7%      0.9%       1
+bt700-mix-01                  110.5    0.013      9.3%      5.2%      12
+bt700-namen-01                 20.3    0.006     29.6%      3.7%       1
+bt700-natuerlich-01            44.6    0.007      1.2%      0.0%       0
+bt700-notiz-01                 75.8    0.013     24.1%      6.9%       8
+bt700-zahlen-01                92.2    0.013      0.6%      0.6%       1
+----------------------------------------------------------------------------
+Gesamt: 1282.1 s Audio · RTF 0.010 · WER final (wortgewichtet) 1.9% (45 Fehler auf 2413 Wörtern)
+
+Ersetzungen (Referenz ← erkannt, Top 40):
+    1×  "activities" ← "lightman"
+    1×  "anbei" ← "by"
+    1×  "beati" ← "beate"
+    1×  "bocaei" ← "e"
+    1×  "cutover" ← "cad"
+    1×  "der" ← "den"
+    1×  "e" ← "die"
+    1×  "e" ← "ihr"
+    1×  "einen" ← "ein"
+    1×  "fachbereiche" ← "fachbereichung"
+    1×  "in" ← "demon"
+    1×  "ins" ← "des"
+    1×  "klimmet" ← "klimmek"
+    1×  "mail" ← "meil"
+    1×  "noch" ← "auch"
+    1×  "off" ← "woff"
+    1×  "offenen" ← "offene"
+    1×  "plan" ← "kadova"
+    1×  "pläne" ← "overpläne"
+    1×  "postgresql" ← "squadsql"
+    1×  "raci" ← "raic"
+    1×  "rechenzentrum" ← "rechenzentrums"
+    1×  "reimar" ← "reimer"
+    1×  "rice" ← "rise"
+    1×  "sam" ← "srm"
+    1×  "seuling" ← "säuling"
+    1×  "verlängern" ← "verlängert"
+    1×  "verteilung" ← "logikverteilung"
+
+Fehlende Wörter (Referenz, Top 20):
+    2×  "frau"
+    2×  "uhr"
+    1×  "buyny"
+    1×  "cutover"
+    1×  "für"
+    1×  "hausenblas"
+    1×  "logik"
+    1×  "per"
+    1×  "philipp"
+    1×  "reimar"
+    1×  "team"
