@@ -89,7 +89,7 @@ einem Ort inkl. mic_test-Bugfix.
 | `pill.rs` — Overlay-Pille | Phasen-Politik (Texte, Dauern, overlay_enabled, Position, Event-Name) hinter Pill-Konstruktoren + reiner `pill_for()`; totes `level`-Feld aus dem Payload entfernt, Anzeige-Defaults („fertig ✓", „schreibt…") nach Rust — overlay.tsx reiner Renderer | `f9e713a` · 7 neue Unit-Tests inkl. Serde-Wire-Vertrag |
 | `session.rs` — Diktat-Session | on_ptt_down/up (inkl. Verarbeitungs-Thread), Hand-off-Toggle, LastPayload aus lib.rs; hotkey.rs verdrahtet auf `session::` | `c3a8531` · `dictation::process` unangetastet (WER 1,9 %) |
 | K7-Mitreisender | VAD-App-Slot als AppState-Feld statt Global; Lock-Ordnung als Feld-Doku | `627f5ae` |
-| `recording::acquire()` — K3 | Einziger Besorgungspfad (warm → einmal frisch) für Diktat und Mikro-Test; **Fix:** mic_test_start fehlte der Retry nach Warm-Start-Fehler; totes Event `pw://mic-fallback` entfernt | `b832cd8` · Suite grün; Fehlerpfad review-verifiziert (kaum reproduzierbar) |
+| `recording::acquire()` — K3 | Einziger Besorgungspfad (warm → einmal frisch) für Diktat und Mikro-Test; **Fix:** mic_test_start fehlte der Retry nach Warm-Start-Fehler; totes Event `pw://mic-fallback` entfernt | `b832cd8` · Suite grün; Fehlerpfad review-verifiziert (kaum reproduzierbar); Mikro-Test GUI ✅ 23.11. |
 
 108 Unit-Tests + 1 E2E grün, `cargo check` 0 Warnungen, `bun run build` ok.
 GUI-Verifizierung durch Nutzer ✅ (23.11., Aufnahme mit Live-Pille).
