@@ -22,6 +22,7 @@ mod hotkey;
 mod model_download;
 mod paste;
 mod paste_tx;
+mod pill;
 mod recording;
 pub mod selftest;
 mod seam;
@@ -68,15 +69,6 @@ const WARM_IDLE: Duration = Duration::from_secs(5 * 60);
 /// Mikrofon-Test des Setup-Assistenten: Dauer bis zum Auto-Stopp
 /// (gegrillt 22.11. — ein Klick, kurze ehrliche Rückmeldung).
 const MIC_TEST_SECS: u64 = 5;
-
-#[derive(Clone, Serialize)]
-struct OverlayPayload {
-    phase: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    level: Option<f32>,
-}
 
 #[derive(Clone, Serialize)]
 struct LastPayload {
@@ -693,11 +685,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         Ok(active) => Some(active),
         Err(e) if !warm_was_some => {
             warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
-            overlay_emit(
-                app,
-                OverlayPayload { phase: "error", message: Some(format!("Mikrofon: {e}")), level: None },
-            );
-            overlay_hide_later(app, Duration::from_secs(3));
+            pill::Pill::error(format!("Mikrofon: {e}")).finish(app);
             None
         }
         Err(e) => {
@@ -708,15 +696,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
                     Ok(r) => r,
                     Err(e) => {
                         warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
-                        overlay_emit(
-                            app,
-                            OverlayPayload {
-                                phase: "error",
-                                message: Some(format!("Mikrofon: {e}")),
-                                level: None,
-                            },
-                        );
-                        overlay_hide_later(app, Duration::from_secs(3));
+                        pill::Pill::error(format!("Mikrofon: {e}")).finish(app);
                         return;
                     }
                 };
@@ -730,8 +710,7 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         *slot = Some(active);
         drop(slot);
         feedback::play_click_if_enabled();
-        overlay_show(app);
-        overlay_emit(app, OverlayPayload { phase: "recording", message: None, level: None });
+        pill::Pill::recording().show(app);
     }
 }
 
@@ -750,11 +729,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         Ok(stopped) => stopped,
         Err(e) => {
             warn!("Aufnahme-Stopp fehlgeschlagen: {e:#}");
-            overlay_emit(
-                app,
-                OverlayPayload { phase: "error", message: Some(format!("Aufnahme: {e}")), level: None },
-            );
-            overlay_hide_later(app, Duration::from_secs(3));
+            pill::Pill::error(format!("Aufnahme: {e}")).finish(app);
             return;
         }
     };
@@ -766,7 +741,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
     }
     let spooled = stopped.spooled;
 
-    overlay_emit(app, OverlayPayload { phase: "transcribing", message: None, level: None });
+    pill::Pill::transcribing().emit(app);
     let engine = state.engine.clone();
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -786,15 +761,7 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         // zurückkehren — sonst bliebe die Pille in „transcribing" hängen.
         let Some(engine) = guard.as_mut() else {
             error!("Diktat verworfen: Engine nicht bereit");
-            overlay_emit(
-                &handle,
-                OverlayPayload {
-                    phase: "error",
-                    message: Some("Spracherkennung nicht bereit — siehe Log".into()),
-                    level: None,
-                },
-            );
-            overlay_hide_later(&handle, Duration::from_secs(3));
+            pill::Pill::error("Spracherkennung nicht bereit — siehe Log".into()).finish(&handle);
             return;
         };
         // Diktat-Verarbeitung (GLOSSARY): die stille Pipeline inkl. Audio-
@@ -822,26 +789,9 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         if vad_changed {
             emit_status(&handle);
         }
-        match outcome {
-            dictation::DictationOutcome::TooShort { .. } => {
-                overlay_emit(&handle, OverlayPayload { phase: "done", message: Some("Zu kurz".into()), level: None });
-                overlay_hide_later(&handle, Duration::from_millis(700));
-            }
-            dictation::DictationOutcome::NoSpeech => {
-                overlay_emit(
-                    &handle,
-                    OverlayPayload { phase: "done", message: Some("Keine Sprache erkannt".into()), level: None },
-                );
-                overlay_hide_later(&handle, Duration::from_millis(900));
-            }
-            dictation::DictationOutcome::Failed(msg) => {
-                error!("Transkription fehlgeschlagen: {msg}");
-                overlay_emit(
-                    &handle,
-                    OverlayPayload { phase: "error", message: Some(msg), level: None },
-                );
-                overlay_hide_later(&handle, Duration::from_secs(3));
-            }
+        // Ausliefern + Historie nur bei transkribiertem Diktat; die Pille
+        // fürs Ende bildet pill_for() aus Ausgang + Bericht (reine Politik).
+        let report = match &outcome {
             dictation::DictationOutcome::Transcribed {
                 raw,
                 final_text,
@@ -854,17 +804,17 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 let info = engine.info().clone();
                 // Ausliefern (GLOSSARY): reine Ziel-Entscheidung inklusive
                 // Fokus-Semantik + dünne Ausführung im eigenen Modul — hier
-                // bleibt nur die Verdrahtung Bericht → Event/Historie/Overlay.
+                // bleibt nur die Verdrahtung Bericht → Event/Historie.
                 let plan = deliver::plan(mode, focus_snap.as_ref(), focus::foreground_hwnd());
-                let report = deliver::execute(&plan, &final_text);
+                let report = deliver::execute(&plan, final_text);
                 let _ = handle.emit(
                     "pw://last",
                     LastPayload {
                         text: final_text.clone(),
                         raw_text: raw.clone(),
                         applied_rules: applied.clone(),
-                        audio_secs,
-                        transcription_ms,
+                        audio_secs: *audio_secs,
+                        transcription_ms: *transcription_ms,
                         target: report.target.clone(),
                     },
                 );
@@ -875,10 +825,10 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                     mode: report.history_mode.to_string(),
                     raw_transcript: raw.clone(),
                     final_text: final_text.clone(),
-                    dictionary_version,
-                    applied,
+                    dictionary_version: dictionary_version.clone(),
+                    applied: applied.clone(),
                     target_app: focus_snap.as_ref().and_then(|s| s.process.clone()),
-                    duration_s: audio_secs,
+                    duration_s: *audio_secs,
                     model: info.model_name.clone(),
                     engine: info.backend.clone(),
                 };
@@ -887,48 +837,12 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
                 } else {
                     let _ = handle.emit("pw://history-changed", ());
                 }
-                overlay_emit(&handle, OverlayPayload { phase: "done", message: report.done_msg, level: None });
-                overlay_hide_later(&handle, Duration::from_millis(900));
+                Some(report)
             }
-        }
+            _ => None,
+        };
+        pill::pill_for(&outcome, report.as_ref()).finish(&handle);
     });
-}
-
-fn overlay_emit(app: &AppHandle, payload: OverlayPayload) {
-    let _ = app.emit("pw://overlay", payload);
-}
-
-fn overlay_show(app: &AppHandle) {
-    if !settings::current().overlay_enabled {
-        return;
-    }
-    if let Some(w) = app.get_webview_window("overlay") {
-        position_bottom_center(&w);
-        let _ = w.show();
-        // Bewusst kein set_focus: Die Ziel-App behält den Fokus fürs Einfügen.
-    }
-}
-
-fn overlay_hide_later(app: &AppHandle, delay: Duration) {
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(delay);
-        if let Some(w) = handle.get_webview_window("overlay") {
-            let _ = w.hide();
-        }
-    });
-}
-
-fn position_bottom_center(w: &tauri::WebviewWindow) {
-    use tauri::PhysicalPosition;
-    let Ok(Some(monitor)) = w.primary_monitor() else { return };
-    let size = monitor.size();
-    let scale = monitor.scale_factor();
-    let (win_w, win_h) = ((380.0 * scale) as i32, (120.0 * scale) as i32);
-    let _ = w.set_position(PhysicalPosition::new(
-        monitor.position().x + (size.width as i32 - win_w) / 2,
-        monitor.position().y + size.height as i32 - win_h - ((96.0 * scale) as i32),
-    ));
 }
 
 #[cfg(test)]

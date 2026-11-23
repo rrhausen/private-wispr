@@ -1,6 +1,11 @@
-// Overlay-Pille (M0): zeigt Aufnahme/Transkription/Fertig/Fehler ohne
-// Fokusraub. Das Fenster selbst ist transparent, always-on-top und wird vom
-// Rust-Backend positioniert und gezeigt/versteckt.
+// Overlay-Pille (GLOSSARY.md): zeigt Aufnahme/Transkription/Fertig/Fehler
+// ohne Fokusraub. Das Fenster selbst ist transparent, always-on-top und wird
+// vom Rust-Backend positioniert und gezeigt/versteckt.
+//
+// Draht-Vertrag: Phase und Meldung kommen über `pw://overlay` aus
+// src-tauri/src/pill.rs — dort liegen alle Texte und Sichtbarkeits-Dauern
+// (Phasen-Politik); diese Seite ist reiner Renderer. Der Pegel läuft separat
+// über `pw://level` (recording.rs, teilt sich mit dem Setup-Assistenten).
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -12,7 +17,6 @@ type Phase = "recording" | "transcribing" | "done" | "error";
 interface OverlayEvent {
   phase: Phase;
   message?: string;
-  level?: number;
 }
 
 function Pill() {
@@ -46,13 +50,7 @@ function Pill() {
   });
 
   const label =
-    phase === "recording"
-      ? `${elapsed.toFixed(1)} s`
-      : phase === "transcribing"
-        ? "schreibt…"
-        : phase === "done"
-          ? (message ?? "fertig ✓")
-          : (message ?? "Fehler");
+    phase === "recording" ? `${elapsed.toFixed(1)} s` : (message ?? "");
 
   return (
     <div className="pill">
