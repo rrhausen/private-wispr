@@ -95,60 +95,33 @@ pub(crate) fn on_ptt_down(app: &AppHandle, mode: OutputMode) {
         info!("PTT down ignoriert: Engine noch nicht bereit");
         return;
     }
-    let mic = state.mic.lock().unwrap().clone();
     let mut slot = state.recording.lock().unwrap();
     if slot.is_some() {
         info!("PTT down ({mode:?}) ignoriert: Es läuft bereits eine Aufnahme");
         return;
     }
-    // Warm gehaltenen Recorder übernehmen (Gerät blieb offen), sonst über
-    // die Fallback-Kette neu öffnen. Schlägt der Warm-Start fehl, einmal
-    // frisch öffnen.
-    let warm = state.mic_warm.lock().unwrap().take();
-    let warm_was_some = warm.is_some();
-    let attempt = if let Some((recorder, _)) = warm {
-        info!("PTT down ({mode:?}): warmes Mikrofon sofort startbereit");
-        recording::start_with(app, recorder, false, mode)
-    } else {
-        info!("PTT down ({mode:?}): öffne Mikrofon ({:?})", mic.clone());
-        match recording::open_for_mic(mic.clone(), Some(state.mic_warm.clone())) {
-            Ok((recorder, used_fallback)) => {
-                recording::start_with(app, recorder, used_fallback, mode)
-            }
-            Err(e) => Err(e),
-        }
-    };
-    let attempt = match attempt {
-        Ok(active) => Some(active),
-        Err(e) if !warm_was_some => {
+    // Recorder besorgen (warm übernehmen, bei Fehlschlag einmal frisch
+    // über die Fallback-Kette) — die ganze Politik steckt in acquire().
+    let active = match recording::acquire(
+        app,
+        state.mic.lock().unwrap().clone(),
+        &state.mic_warm,
+        mode,
+    ) {
+        Ok(active) => active,
+        Err(e) => {
             warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
             pill::Pill::error(format!("Mikrofon: {e}")).finish(app);
-            None
-        }
-        Err(e) => {
-            // Warm-Start schlug fehl — einmal frisch öffnen.
-            warn!("Warmes Mikrofon startet nicht ({e:#}) — öffne frisch");
-            let (recorder, used_fallback) =
-                match recording::open_for_mic(mic.clone(), Some(state.mic_warm.clone())) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        warn!("Aufnahme-Start fehlgeschlagen: {e:#}");
-                        pill::Pill::error(format!("Mikrofon: {e}")).finish(app);
-                        return;
-                    }
-                };
-            recording::start_with(app, recorder, used_fallback, mode).ok()
+            return;
         }
     };
-    if let Some(active) = attempt {
-        // Fokus-Check (specs 4.6): Ziel-Fenster jetzt merken — beim
-        // Einfügen wird verglichen, ob es noch vorne steht.
-        *state.focus_at_start.lock().unwrap() = Some(focus::capture());
-        *slot = Some(active);
-        drop(slot);
-        feedback::play_click_if_enabled();
-        pill::Pill::recording().show(app);
-    }
+    // Fokus-Check (specs 4.6): Ziel-Fenster jetzt merken — beim
+    // Einfügen wird verglichen, ob es noch vorne steht.
+    *state.focus_at_start.lock().unwrap() = Some(focus::capture());
+    *slot = Some(active);
+    drop(slot);
+    feedback::play_click_if_enabled();
+    pill::Pill::recording().show(app);
 }
 
 /// Hotkey-Taste losgelassen: Aufnahme beenden, transkribieren, im Modus der

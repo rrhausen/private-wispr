@@ -214,17 +214,16 @@ fn mic_test_start(app: AppHandle, state: tauri::State<AppState>) -> Result<(), S
     if state.mic_test.lock().unwrap().is_some() {
         return Ok(()); // Test läuft bereits — nichts zu tun
     }
-    let warm = state.mic_warm.lock().unwrap().take();
-    let (recorder, used_fallback) = match warm {
-        Some((recorder, _)) => (recorder, false),
-        None => recording::open_for_mic(
-            state.mic.lock().unwrap().clone(),
-            Some(state.mic_warm.clone()),
-        )
-        .map_err(|e| e.to_string())?,
-    };
-    let active = recording::start_with(&app, recorder, used_fallback, OutputMode::Cursor)
-        .map_err(|e| e.to_string())?;
+    // Gleicher acquire()-Pfad wie ein Diktat: warmen Recorder übernehmen,
+    // bei Fehlschlag einmal frisch über die Fallback-Kette (der Test hatte
+    // diesen Retry vorher schlicht nicht — Architektur-Review K3).
+    let active = recording::acquire(
+        &app,
+        state.mic.lock().unwrap().clone(),
+        &state.mic_warm,
+        OutputMode::Cursor,
+    )
+    .map_err(|e| e.to_string())?;
     *state.mic_test.lock().unwrap() = Some(active);
     let _ = app.emit("pw://mic-test", true);
 
