@@ -20,9 +20,17 @@ _Avoid_: Normaler Modus, Einfüge-Modus
 Diktat, dessen fertiger Text in die Tagesdatei wandert — für Ziele, die Strg+V nicht annehmen; Taste ist Umschalter (antippen startet, nochmal beendet).
 _Avoid_: Handoff-Datei-Modus, Ablage-Modus
 
+**Diktat-Session**:
+Der Lebenszyklus eines Diktats von der Hotkey-Kante bis zur abgeschlossenen Auslieferung und Historie — Start, Ende und die Umschalter-Semantik des Hand-off-Hotkeys.
+_Avoid_: Aufnahme-Steuerung (meint die Audiotechnik), PTT-Flow
+
 **Ausliefern**:
 Der Vorgang, der den fertigen Text eines Diktats an sein Ziel bringt — am Cursor einfügen, in die Zwischenablage legen oder der Hand-off-Tagesdatei anhängen. Plant das Ziel als reine Entscheidung (inklusive Fokus-Semantik) und berichtet ehrlich, wohin der Text wirklich ging — auch im Fehlerfall.
 _Avoid_: Ausgabe (sagt nicht, wohin), Einfügen (ist nur das Cursor-Ziel)
+
+**Overlay-Pille**:
+Die phasengesteuerte Anzeige eines Diktats ohne Fokusraub; Phase, Text und Sichtbarkeitsdauer bestimmt der Diktat-Lebenszyklus, nicht die Anzeige.
+_Avoid_: Status-Overlay, Toast
 
 **Paste-Transaktion**:
 Das Einfügen am Cursor als Transaktion statt Feuer-und-vergessen: Die Zwischenablage wird per Delayed-Render nur *versprochen*, das Einfügen per Tastenkombination ausgelöst, das erste Lesen der Ziel-App bestätigt den Vorgang, und danach wird die ursprüngliche Zwischenablage des Nutzers wiederhergestellt. Bleibt die Bestätigung aus, bleibt der Text in der Zwischenablage (manuelles Einfügen möglich).

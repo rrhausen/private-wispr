@@ -21,7 +21,17 @@ Vulkan), Tauri 2 (Rust + React/TS). Deutsch zuerst, Englisch second.
 
 ```
 src-tauri/src/
-  lib.rs        Orchestrierung: AppState, PTT-Flow, Overlay-Steuerung, Tray
+  lib.rs        Orchestrierung: AppState, Commands, Tray, Engine-Load/Status
+  session.rs    Diktat-Session (GLOSSARY.md) — Lebenszyklus von der Hotkey-
+                Kante bis Auslieferung + Historie: on_ptt_down/up (inkl.
+                Verarbeitungs-Thread: Wörterbuch, Naht, VAD-Gate +
+                dictation::process, Ausliefern, pw://last, Historie),
+                Hand-off-Toggle; Warm-Start-Fallback des Mikrofons
+  pill.rs       Overlay-Pille (GLOSSARY.md) — Phasen-Politik hinter kleinem
+                Interface: Pill-Konstruktoren (Texte, Sichtbarkeits-Dauern,
+                overlay_enabled, Position, Event-Name intern) + pill_for()
+                als reine Outcome→Pille-Abbildung; Draht-Vertrag zu
+                overlay.tsx per Serde-Test gepinnt
   dictation.rs  Diktat-Verarbeitung (GLOSSARY.md) — stilles tiefes Modul hinter
                 einer Funktion: transcribe (SttEngine) + Regeln + Fitting +
                 komplette Audio-Politik (specs 4.8, jeden Pfad entsorgt).
@@ -110,13 +120,14 @@ src/            Frontend: main.tsx→App.tsx (Tabs Übersicht/Einstellungen,
                 OS-Wechsel-Listener einmalig montiert), overlay.tsx (Pille)
 ```
 
-**Datenfluss:** Hotkey Pressed → `recording::start` (+ `focus::capture`) →
-Overlay „recording" → Released → `recording::stop` → Thread:
+**Datenfluss:** Hotkey Pressed → `session::on_ptt_down` (Warm-Start,
+`focus::capture`, `recording::start`) → Pille „recording" → Released →
+`session::on_ptt_up` → `recording::stop` → Thread:
 `dictation::process` (stille Pipeline: VAD-Qualitätstor → transcribe +
 Regeln + Fitting + Audio-Politik) → Ausliefern: `deliver::plan` (reine
 Ziel-Entscheidung mit Fokus-Semantik) + `deliver::execute` (dünn:
 Zwischenablage/Strg+V/Hand-off, ehrlicher Bericht) → `history::insert` →
-Overlay „done".
+Pille über `pill::pill_for`.
 Events: `pw://status`, `pw://overlay`,
 `pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hook-status`,
 `pw://model-download`, `pw://history-changed`.
