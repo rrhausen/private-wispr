@@ -90,8 +90,8 @@ und Overlay-Pille als tiefe Module.
 | K7-Mitreisender | VAD-App-Slot als AppState-Feld statt Global; Lock-Ordnung als Feld-Doku | `627f5ae` |
 
 108 Unit-Tests + 1 E2E grün, `cargo check` 0 Warnungen, `bun run build` ok.
-GUI-Verifizierung (Pille-Phasen live) beim Nutzer offen. GLOSSARY: neu
-„Diktat-Session", „Overlay-Pille".
+GUI-Verifizierung durch Nutzer ✅ (23.11., Aufnahme mit Live-Pille).
+GLOSSARY: neu „Diktat-Session", „Overlay-Pille".
 
 ## Wartet auf den Nutzer
 
