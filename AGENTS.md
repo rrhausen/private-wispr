@@ -50,6 +50,9 @@ src-tauri/src/
                 Key-Capture bewusst im Frontend (ADR 0001)
   recording.rs  Aufnahme (handy-recorder: WASAPI → 16 kHz mono f32) mit
                 Disk-Spooling (WAV wächst auf Platte, kein Längen-Limit);
+                acquire() = der eine Besorgungspfad (warmen Recorder
+                übernehmen, bei Fehlschlag einmal frisch über die
+                Fallback-Kette) für Diktat-Session und Mikro-Test;
                 WAV wird nach Transkription default gelöscht (specs 4.8)
   stt.rs        SttEngine-Trait + In-Process-Engine: transcribe.cpp (Parakeet
                 TDT v3 Q8, Backend::Auto→Vulkan) — Selftest/Eval-Pfad;
@@ -129,7 +132,7 @@ Ziel-Entscheidung mit Fokus-Semantik) + `deliver::execute` (dünn:
 Zwischenablage/Strg+V/Hand-off, ehrlicher Bericht) → `history::insert` →
 Pille über `pill::pill_for`.
 Events: `pw://status`, `pw://overlay`,
-`pw://level`, `pw://last`, `pw://mic-fallback`, `pw://hook-status`,
+`pw://level`, `pw://last`, `pw://hook-status`,
 `pw://model-download`, `pw://history-changed`.
 
 ## Wie baue und teste ich

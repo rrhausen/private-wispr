@@ -78,16 +78,18 @@ Nutzer offen (s. u.).
 | **3.4 Silero-VAD in der Aufnahme** | 4.2 | ✅ `vad.rs` (ADR 0004, gegrillt): Silero v6.2 in-process auf CPU hinter `SpeechAnalyzer`-Trait, lazy beim ersten Diktat; **Qualitätstor in `dictation::process`** — `NoSpeech` (kein Engine-Call, Halluzinations-Filter) + Zu-kurz-Gate auf Sprechzeit. **Bewusst ohne Sample-Trim**: Nachmessung BT700 (Release) zeigte 45 → 123/109/59 Fehler je Trim-Variante (Anlaufsilence = Encoder-Warm-up); Gates-only hält 45/2413 exakt, Transkripte bytengleich (`eval/reports/nach-vad-run.txt`). Kein Auto-Stop (Taste entscheidet), Parameter als Konstanten (Threshold 0,35, Pad 200 ms — konservativ für leise Diktate), modusunabhängig. Chunking (~30 s) auf M3 verschoben, Segment-Basis steht. Modell `silero-vad-v6.2-F32.gguf` mit Paketen verbreitet (Download-Skript + portable-ZIP/NSIS; fehlend ⇒ Gates offen, laut + `pw://status` sichtbar, nie blockierend). Selftest misst jetzt über den Engine-Worker wie die App | ✅ 101 Unit + 1 E2E; WER neu gemessen & unverändert (1,9 %/45/2413); GUI ✅ 23.11. (stille Aufnahme → „Keine Sprache erkannt", normales Diktat unverändert) |
 | **3.3 Setup-Assistent erster Start** | 4.10 | ✅ `setup.rs` (Veteranen-Migration: Bestand + Modell ⇒ erledigt, nur echte Erststarts sehen den Assistenten) + `setup.tsx` (Willkommen → Mikro mit 5-s-Pegeltest → Modell → Diktat-Test als E2E-Finale → Fertig; „Später" ohne setup_done; Re-Entry „Einrichtung wiederholen" in den Einstellungen). Diktat-Pfad unberührt, WER unverändert | ✅ 93 Unit + 1 E2E (Migrations-Matrix); GUI offen |
 
-### Zwischensprint 23.11. — Architektur-Refactor K1 ✅
+### Zwischensprint 23.11. — Architektur-Refactor K1 + K3 ✅
 
-Kandidat 1 des Architektur-Reviews (gegrillt, dann gebaut): Diktat-Session
-und Overlay-Pille als tiefe Module.
+Kandidaten 1 und 3 des Architektur-Reviews (je gegrillt, dann gebaut):
+Diktat-Session und Overlay-Pille als tiefe Module; Recorder-Besorgung an
+einem Ort inkl. mic_test-Bugfix.
 
 | Änderung | Umsetzung | Verifikation |
 |---|---|---|
 | `pill.rs` — Overlay-Pille | Phasen-Politik (Texte, Dauern, overlay_enabled, Position, Event-Name) hinter Pill-Konstruktoren + reiner `pill_for()`; totes `level`-Feld aus dem Payload entfernt, Anzeige-Defaults („fertig ✓", „schreibt…") nach Rust — overlay.tsx reiner Renderer | `f9e713a` · 7 neue Unit-Tests inkl. Serde-Wire-Vertrag |
 | `session.rs` — Diktat-Session | on_ptt_down/up (inkl. Verarbeitungs-Thread), Hand-off-Toggle, LastPayload aus lib.rs; hotkey.rs verdrahtet auf `session::` | `c3a8531` · `dictation::process` unangetastet (WER 1,9 %) |
 | K7-Mitreisender | VAD-App-Slot als AppState-Feld statt Global; Lock-Ordnung als Feld-Doku | `627f5ae` |
+| `recording::acquire()` — K3 | Einziger Besorgungspfad (warm → einmal frisch) für Diktat und Mikro-Test; **Fix:** mic_test_start fehlte der Retry nach Warm-Start-Fehler; totes Event `pw://mic-fallback` entfernt | `b832cd8` · Suite grün; Fehlerpfad review-verifiziert (kaum reproduzierbar) |
 
 108 Unit-Tests + 1 E2E grün, `cargo check` 0 Warnungen, `bun run build` ok.
 GUI-Verifizierung durch Nutzer ✅ (23.11., Aufnahme mit Live-Pille).
