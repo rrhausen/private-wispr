@@ -62,6 +62,10 @@ pub struct AppState {
     /// Vordergrund-Fenster bei Aufnahmebeginn (Fokus-Check, specs 4.6, und
     /// target_app für die Historie).
     pub focus_at_start: Mutex<Option<focus::Snapshot>>,
+    /// Sprach-Aktivitätsprüfung der App (lazy beim ersten Diktat).
+    /// Lock-Ordnung: immer NACH dem Engine-Lock nehmen — beide Diktat-
+    /// Threads halten sie in dieser Reihenfolge.
+    pub vad: Mutex<vad::AppVad>,
 }
 
 /// Wie lange das Mikrofon nach dem letzten Diktat warm gehalten wird.
@@ -92,15 +96,15 @@ fn status(state: tauri::State<AppState>) -> serde_json::Value {
             "model_path": stt::default_model_path().display().to_string(),
             "model_present": stt::default_model_path().exists(),
             "model_downloading": model_download::is_running(),
-            "vad": vad_status_json(),
+            "vad": vad_status_json(&state),
         },
     })
 }
 
 /// VAD-Zustand als JSON für Status-Command und -Event (Lock-Ordnung: erst
 /// Engine-, dann VAD-Lock — wie überall).
-fn vad_status_json() -> serde_json::Value {
-    let slot = vad::lock_app();
+fn vad_status_json(state: &AppState) -> serde_json::Value {
+    let slot = state.vad.lock().unwrap();
     serde_json::json!({
         "state": slot.state.key(),
         "reason": match &slot.state {
@@ -436,6 +440,7 @@ pub fn run() {
                 mic: Arc::new(Mutex::new(initial.mic_device)),
                 mic_warm: Arc::new(Mutex::new(None)),
                 focus_at_start: Mutex::new(None),
+                vad: Mutex::new(vad::AppVad::new()),
             });
 
             // Engine im Hintergrund laden (Modell-Load dauert Sekunden).
@@ -546,7 +551,7 @@ pub(crate) fn load_engine(app: &AppHandle) {
 pub(crate) fn emit_status(app: &AppHandle) {
     let state = app.state::<AppState>();
     let info = state.engine_info.lock().unwrap();
-    let vad = vad_status_json();
+    let vad = vad_status_json(&state);
     let _ = app.emit(
         "pw://status",
         serde_json::json!({

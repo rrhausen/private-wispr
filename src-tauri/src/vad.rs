@@ -22,8 +22,6 @@
 //! sichtbar (`VadState::Failed`), nie verworfen.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 
 use anyhow::{Context, Result};
 
@@ -242,26 +240,22 @@ impl VadState {
     }
 }
 
-/// Der globale App-Slot. Initialisierung einmalig beim ersten Diktat
-/// (`ensure_loaded`); ein Fehlschlag wird gemerkt (kein Retry-Geflimmer je
-/// Diktat), die App startet den nächsten Versuch erst nach Neustart.
+/// Der App-Slot (Feld in AppState, kein Global). Initialisierung einmalig
+/// beim ersten Diktat (`ensure_loaded`); ein Fehlschlag wird gemerkt (kein
+/// Retry-Geflimmer je Diktat), die App startet den nächsten Versuch erst
+/// nach Neustart. Lock-Ordnung: immer NACH dem Engine-Lock nehmen (beide
+/// Diktat-Threads halten sie in dieser Reihenfolge).
 pub struct AppVad {
     pub analyzer: Option<SileroVad>,
     pub state: VadState,
 }
 
-static APP_VAD: Mutex<AppVad> = Mutex::new(AppVad {
-    analyzer: None,
-    state: VadState::NotTried,
-});
-
-/// App-weiter Zugriff. Lock-Ordnung: immer NACH dem Engine-Lock nehmen
-/// (beide Diktat-Threads halten sie in dieser Reihenfolge).
-pub fn lock_app() -> MutexGuard<'static, AppVad> {
-    APP_VAD.lock().expect("VAD-Slot vergiftet")
-}
-
 impl AppVad {
+    /// Frischer, uninitialisierter Slot (Engine-noch-nicht-probiert).
+    pub fn new() -> AppVad {
+        AppVad { analyzer: None, state: VadState::NotTried }
+    }
+
     /// Beim ersten Diktat das Modell laden. Liefert `true`, wenn sich der
     /// Zustand geändert hat (Aufrufer stößt ein Status-Event an — NACH dem
     /// Loslassen des Locks, er ist nicht reentrant).

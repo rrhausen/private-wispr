@@ -208,7 +208,8 @@ pub(crate) fn on_ptt_up(app: &AppHandle) {
         // VAD (ADR 0004): lazy beim ersten Diktat initialisiert, danach
         // gemerkt; Lock-Ordnung Engine → VAD wie überall.
         let (outcome, vad_changed) = {
-            let mut vad_slot = vad::lock_app();
+            let app_state = handle.state::<AppState>();
+            let mut vad_slot = app_state.vad.lock().unwrap();
             let vad_changed = vad_slot.ensure_loaded();
             let analyzer =
                 vad_slot.analyzer.as_mut().map(|a| a as &mut dyn vad::SpeechAnalyzer);
