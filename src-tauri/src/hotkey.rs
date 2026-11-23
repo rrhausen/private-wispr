@@ -389,11 +389,11 @@ fn handle_event(app: &AppHandle, ev: &KeyEvent) {
             // beendet die Aufnahme — die Release-Kante (Loslassen nach dem
             // Antippen) gehört bewusst NICHT zur Steuerung, sonst wäre die
             // Aufnahme nach dem Start sofort wieder vorbei.
-            (OutputMode::Handoff, true) => crate::on_handoff_toggle(app),
+            (OutputMode::Handoff, true) => crate::session::on_handoff_toggle(app),
             (OutputMode::Handoff, false) => {}
             // Cursor behält klassisches Push-to-Talk: halten = aufnehmen.
-            (OutputMode::Cursor, true) => crate::on_ptt_down(app, mode),
-            (OutputMode::Cursor, false) => crate::on_ptt_up(app),
+            (OutputMode::Cursor, true) => crate::session::on_ptt_down(app, mode),
+            (OutputMode::Cursor, false) => crate::session::on_ptt_up(app),
         }
     }
 }
